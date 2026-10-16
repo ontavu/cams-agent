@@ -28,6 +28,7 @@ import (
 	"github.com/ontavu/cams-agent/lanctrl"
 	"github.com/ontavu/cams-agent/upagent"
 	"github.com/ontavu/cams-go-utils/utils"
+	"github.com/ontavu/go-swarm"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 )
@@ -154,7 +155,7 @@ type cameraBundle struct {
 // than a swarm: a camera whose upstream has stopped has nowhere to push, and an
 // upstream whose camera has exited has nothing to forward.
 func (b *cameraBundle) Run(ctx context.Context) {
-	utils.EnsembleRun(ctx, b.sink.Run, b.agent.Run)
+	swarm.EnsembleRun(ctx, b.sink.Run, b.agent.Run)
 }
 
 // Close releases both halves. It is what the LAN agent calls for a camera it
@@ -248,7 +249,7 @@ func runAgent(ctx context.Context, cfg AgentConfig) error {
 
 	utils.Logger.Info().Str("action", "starting").Msg("agent")
 
-	utils.EnsembleRun(ctx, upstream.Run, lan.Run)
+	swarm.EnsembleRun(ctx, upstream.Run, lan.Run)
 
 	return nil
 }

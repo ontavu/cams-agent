@@ -14,7 +14,8 @@ for tool in go gofmt git; do
 done
 
 # Never a workspace: this module is checked against the tagged versions of
-# cams-api and cams-go-utils its go.mod requires, as its CI and its image build.
+# cams-api, cams-go-utils and go-swarm its go.mod requires, as its CI and its
+# image build.
 export GOWORK=off
 
 scratch="$(mktemp -d)"

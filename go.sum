@@ -70,8 +70,10 @@ github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWE
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
 github.com/ontavu/cams-api v1.0.0 h1:7PB51ZW50yDRrQNX5YguCliYuIshXevokMw0V0nMgr8=
 github.com/ontavu/cams-api v1.0.0/go.mod h1:4s6boZI5aIsRmPgMPC7b1doyrRJosUoAgtYe7OPPlZY=
-github.com/ontavu/cams-go-utils v0.2.0 h1:JpHGRxZ7ScPIYPPrErOze1Yut+51wgTZxVGzTWGb3h4=
-github.com/ontavu/cams-go-utils v0.2.0/go.mod h1:eIZn6/NdonivymbIyKdAbTzdOMq59gohc1eB1KEEZO8=
+github.com/ontavu/cams-go-utils v0.4.0 h1:jXtG9Ul/FNkA42MUgZHB4MmIvESMemtp4L62aAQxvso=
+github.com/ontavu/cams-go-utils v0.4.0/go.mod h1:AdKr+l7T0BkL+cSEE6S9IJkpqKyfaMJjTJbZ9Xomo/I=
+github.com/ontavu/go-swarm v0.1.0 h1:HD9vWd66Z6Y3I6E9VwvKrw6ppPwMIUhinaBNmKHUARs=
+github.com/ontavu/go-swarm v0.1.0/go.mod h1:vSC2UgMO3dQXOwwB+f+EwRP+SWC7Isr87fP8nIi67o0=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/pion/logging v0.2.4 h1:tTew+7cmQ+Mc1pTBLKH2puKsOvhm32dROumOZ655zB8=
 github.com/pion/logging v0.2.4/go.mod h1:DffhXTKYdNZU+KtJ5pyQDjvOAh/GsNSyv1lbkFbe3so=

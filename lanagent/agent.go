@@ -35,6 +35,7 @@ import (
 	hostlan "github.com/ontavu/cams-agent/lan"
 	"github.com/ontavu/cams-agent/lanctrl"
 	"github.com/ontavu/cams-go-utils/utils"
+	"github.com/ontavu/go-swarm"
 )
 
 // ErrNoSuchCamera is returned for a command naming a camera the agent does not
@@ -99,8 +100,8 @@ type Agent struct {
 	interfacesStatic           []string
 	interfacesDiscoverPatterns []string
 
-	nicsGroup utils.Swarm
-	camsSwarm utils.Swarm
+	nicsGroup swarm.Swarm
+	camsSwarm swarm.Swarm
 }
 
 // New builds the LAN agent and binds its bus endpoint at bindURL.
@@ -250,10 +251,10 @@ func (lan *Agent) Run(ctx context.Context) {
 	utils.Logger.Info().Str("action", "start").Msg("lan")
 
 	// Cameras may come ang go, so a simple goroutine swarm if enough.
-	lan.camsSwarm = utils.NewSwarm(ctx)
+	lan.camsSwarm = swarm.New(ctx)
 
 	// ... This is not the case for network interfaces that are rather stable.
-	lan.nicsGroup = utils.NewEnsemble(ctx)
+	lan.nicsGroup = swarm.NewEnsemble(ctx)
 
 	// An owner that exits leaves no agent of its own running, on every path out
 	// of this function and not only the expected one. Cancel runs before Wait,

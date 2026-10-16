@@ -30,6 +30,7 @@ import (
 	"github.com/ontavu/cams-agent/agentbus"
 	"github.com/ontavu/cams-agent/camctrl"
 	"github.com/ontavu/cams-go-utils/utils"
+	"github.com/ontavu/go-swarm"
 	"github.com/rs/zerolog"
 )
 
@@ -70,7 +71,7 @@ type Agent struct {
 
 	// group supervises the media subtree. It is nil whenever no media is
 	// running, which includes every camera the hub never asked to play.
-	group utils.Swarm
+	group swarm.Swarm
 
 	flagRetry bool
 }
@@ -258,7 +259,7 @@ func (cam *Agent) onCmdPlay(ctx context.Context) {
 		fallthrough
 	case camctrl.StateIdle:
 		cam.state = camctrl.StatePlaying
-		cam.group = utils.NewEnsemble(ctx)
+		cam.group = swarm.NewEnsemble(ctx)
 		cam.group.Run(func(c context.Context) { cam.runStream(c) })
 		cam.debug().Msg("camera restarted")
 		fallthrough

@@ -37,6 +37,7 @@ import (
 	"github.com/ontavu/cams-api/pb"
 	"github.com/ontavu/cams-api/wire"
 	"github.com/ontavu/cams-go-utils/utils"
+	"github.com/ontavu/go-swarm"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -112,7 +113,7 @@ func (us *Agent) Run(ctx context.Context) {
 
 	// The bus is served beside the connection attempts, so that STATE is
 	// answerable while the link is down -- which is when it is worth asking.
-	utils.EnsembleRun(ctx,
+	swarm.EnsembleRun(ctx,
 		func(c context.Context) { us.bus.Serve(c, us.dispatch) },
 		us.runConnections,
 	)
@@ -208,7 +209,7 @@ func (us *Agent) connectAndServe(ctx context.Context) {
 	// reader used to hand its work to the registrar's goroutine through an
 	// unbuffered channel, which only meant that a slow command stalled the
 	// registrations as well.
-	utils.EnsembleRun(ctx,
+	swarm.EnsembleRun(ctx,
 		func(c context.Context) {
 			defer stopStream()
 			if err := us.readControl(c, stream); err != nil {

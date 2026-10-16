@@ -20,6 +20,7 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/ontavu/cams-go-utils/utils"
+	"github.com/ontavu/go-swarm"
 	"github.com/rs/zerolog"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/pull"
@@ -97,7 +98,7 @@ func (p *Puller) Serve(ctx context.Context, h Handler) {
 
 	// The socket knows nothing about contexts, so closing it is what releases a
 	// blocked receive. Cancel runs before Wait, so this goroutine is joined.
-	watch := utils.NewSwarm(ctx)
+	watch := swarm.New(ctx)
 	defer watch.Wait()
 	defer watch.Cancel()
 	watch.Run(func(c context.Context) {

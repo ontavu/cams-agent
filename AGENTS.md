@@ -23,8 +23,9 @@ toolchain silently on the next build.
 ## What may be imported, and by whom
 
 This module requires [cams-api](https://github.com/ontavu/cams-api), the gRPC contract,
-and [cams-go-utils](https://github.com/ontavu/cams-go-utils), both under the MPL-2.0 and
-both **at a tagged version, never through a `replace`**. A change to either is a release
+[cams-go-utils](https://github.com/ontavu/cams-go-utils) and
+[go-swarm](https://github.com/ontavu/go-swarm), all three under the MPL-2.0 and all three
+**at a tagged version, never through a `replace`**. A change to any of them is a release
 there, and then `go get <module>@vX.Y.Z` and `go mod tidy` here.
 
 **Nothing outside this repository may import it, and the Cams hub above all.** This module
@@ -136,9 +137,10 @@ New or modified logic ships with its tests, in the same change.
 Every goroutine has an end that is reachable from the outside.
 
 * A goroutine either takes a `context.Context` and returns when it is done, or belongs
-  to an `errgroup.Group` or a `utils.Swarm` that somebody waits on.
-* `utils.NewSwarm` and `utils.NewEnsemble` (`utils/swarm.go` in `cams-go-utils`) are the local idiom for
-  a supervised group: they hold the cancel and the `WaitGroup`, and count live members.
+  to an `errgroup.Group` or a `swarm.Swarm` that somebody waits on.
+* `swarm.New` and `swarm.NewEnsemble`, from
+  [go-swarm](https://github.com/ontavu/go-swarm), are the local idiom for a supervised
+  group: they hold the cancel and the `WaitGroup`, and count live members.
 * Whoever cancels also waits. A `Cancel()` with no matching `Wait()` lets the process
   tear down while work is still running.
 * A library that knows nothing about contexts needs an explicit bridge. See

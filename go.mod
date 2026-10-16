@@ -9,7 +9,8 @@ require (
 	github.com/jfsmig/onvif/v2 v2.0.1
 	github.com/juju/errors v1.0.0
 	github.com/ontavu/cams-api v1.0.0
-	github.com/ontavu/cams-go-utils v0.2.0
+	github.com/ontavu/cams-go-utils v0.4.0
+	github.com/ontavu/go-swarm v0.1.0
 	github.com/pion/rtcp v1.2.17
 	github.com/pion/rtp v1.10.5
 	github.com/rs/zerolog v1.35.1
