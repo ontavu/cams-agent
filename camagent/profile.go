@@ -86,10 +86,10 @@ func videoProfilesOf(offered sdk.MediaProfiles) []videoProfile {
 	return out
 }
 
-// encodingRank orders the encodings by what the hub can carry. H.264 remuxes
-// into fMP4 and plays everywhere; H.265 remuxes too but only Safari and a
-// hardware-decoding Chrome will play it; anything else needs a transcoder that
-// is not built.
+// encodingRank orders the encodings by how widely they play. The agent relays a
+// stream exactly as the camera encodes it, so H.264, which plays nearly
+// everywhere, comes first; H.265 plays in far fewer places; anything else would
+// need a transcoder, and there is none.
 func encodingRank(encoding string) int {
 	switch encoding {
 	case encodingH264:

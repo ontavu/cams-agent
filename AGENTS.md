@@ -12,11 +12,13 @@ ci/check.sh     # everything CI checks
 
 It runs gofmt, `go vet`, the build of both commands, the import rule of the agent
 packages (below), `go test -race` and the `go mod tidy` check, and refuses a run that
-changed the working tree. `.github/workflows/ci.yml` runs it, then builds the image. Add a
-check to the script, never to the workflow alone.
+changed the working tree. `.github/workflows/ci.yml` runs it, then builds the image. The
+image is the one check the script cannot run, since it needs Docker; add any other check
+to the script, never to the workflow alone.
 
-`go.mod` declares Go **1.26.7** as the language floor, and CI runs the release that Cams's
-CI image pins. Keep the floor at or below that, and do not raise it past the locally
+`go.mod` declares Go **1.26.7** as the language floor. CI and the image build with the
+release pinned in `.github/workflows/ci.yml` and in the `Dockerfile`, and the two pins
+move together. Keep the floor at or below that, and do not raise it past the locally
 installed toolchain without intending to: with `GOTOOLCHAIN=auto`, Go then downloads a
 toolchain silently on the next build.
 
@@ -71,8 +73,8 @@ converted -- camera, LAN, upstream. The pattern:
    **A controller's `New` returns the concrete `*Client`, not the interface.** Returning
    the interface looks tidier and costs more than it looks: the contract is narrower than
    the client on purpose, so returning it puts the remaining methods out of reach of
-   every caller including the tests. That is how `Ping`, `State`, `ID` and one `Close`
-   went missing once already. Each package carries a
+   every caller including the tests. That is how `Ping`, `State` and one `Close` went
+   missing once already. Each package carries a
    `var _ XController = (*Client)(nil)` so the two cannot drift.
 
    **The other half of the rule, learned the harder way: a contract narrower than what
@@ -157,8 +159,8 @@ runtime, systemd, a supervisor. That signal is the only notice it gets.
 * **Trap `syscall.SIGTERM`, and never `os.Kill`.** `os.Kill` is `SIGKILL`, which cannot
   be caught; Go accepts it in `signal.Notify` and ignores it, so a binary listing it and
   `os.Interrupt` handles `SIGINT` alone. `SIGTERM` then keeps its default disposition and
-  the process dies where it stands. Measured on one of Cams's viewer processes before
-  this was fixed there: `SIGTERM` exited 143 with no drain, `SIGINT` exited 0 drained --
+  the process dies where it stands. Measured on a Go service that made this mistake:
+  `SIGTERM` exited 143 with no drain, `SIGINT` exited 0 drained --
   identical from a terminal, opposite everywhere else. Both binaries here take
   `syscall.SIGTERM, syscall.SIGINT`.
 
@@ -173,8 +175,8 @@ malformed frames forever.
   There is no third choice, and "block forever" is not a policy.
 * On a media path, dropping beats blocking. Holding a reading goroutine stalls the whole
   RTSP session and trips its timeout detection, which costs far more than one packet.
-  Count the drops and expose the counter, the way `mediaSink.push` does in
-  `camagent/stream.go`.
+  Count the drops and report them, the way `mediaSink.push` counts them in
+  `camagent/stream.go` and the end of each session logs the totals.
 * Never accumulate per-packet or per-frame data in a slice or a map that nothing prunes.
 
 ### Review the local code as a senior Go developer
@@ -253,9 +255,7 @@ and its pull request description, with one line: `Assisted-By: Claude Code`,
 ## Releases
 
 A release is a tag, `vX.Y.Z`, below v1 while the commands and their flags still move. CI
-runs on the tag as on any other push. Cams's `docker/compose.yaml` builds the image from
-this repository at a tag, under its `lan` profile, so a release reaches the Cams sandbox
-when that tag is moved there.
+runs on the tag as on any other push.
 
 **Never move or recreate a tag.** The Go checksum database remembers the first content it
 saw for a version, so a moved tag fails `go install` for everyone who already fetched it.

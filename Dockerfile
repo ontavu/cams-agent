@@ -4,17 +4,14 @@
 #   docker run --rm --network host -e CAMS_ONVIF_PASSWORD=... cams-agent:local \
 #       cams-agent --user <user> --control <hub>:6000 --media <hub>:6001
 #
-# Cams's docker/compose.yaml builds it from this repository at a tag, under its
-# `lan` profile.
-#
 # It needs the host's network namespace to work at all. Discovery is
 # WS-Discovery, sent per interface over multicast, and the agent enumerates the
 # interfaces it can see: inside a bridge namespace that is one veth, and the
 # probe never reaches the LAN. macvlan is the other answer, and the better one
 # for a NAS or a router.
 
-# The toolchain Cams's CI image pins (packaging/versions.env there), and the
-# distribution its runtime images run on.
+# The toolchain, the release .github/workflows/ci.yml pins too: the two move
+# together. Then the distribution the runtime stage runs on.
 ARG GO_VERSION=1.27.1
 ARG UBUNTU_VERSION=26.04
 
@@ -44,7 +41,7 @@ FROM ubuntu:${UBUNTU_VERSION}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# The uid of Cams's runtime images, so that one rule fits all of them.
+# A fixed, unprivileged uid, so that a rule or a volume on the host can name it.
 ARG CAMS_UID=10001
 
 RUN set -ex \
