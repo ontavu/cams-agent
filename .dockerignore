@@ -1,0 +1,9 @@
+# The image builds from the sources and nothing else.
+.git
+.github
+.claude
+/cams-agent
+/cams-cli
+*.test
+*.out
+*.prof

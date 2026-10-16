@@ -1,0 +1,18 @@
+# The two commands, when built into the clone by `go build ./bin/<name>`.
+# Anchored: bin/ holds this repository's own sources.
+/cams-agent
+/cams-cli
+
+# Test binaries and profiles.
+*.test
+*.out
+*.prof
+
+# A workspace belongs to whoever develops several modules together, never to
+# this repository.
+go.work
+go.work.sum
+
+.idea
+*.swp
+*.swo
