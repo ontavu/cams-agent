@@ -34,25 +34,39 @@ const (
 	DefaultCheckPeriod     = 10
 	DefaultUpstreamTimeout = 30
 
-	// The hub is two processes on two ports, and an agent talks to both.
+	// The hub has two endpoints, and an agent talks to both.
 	//
-	// DefaultControlAddr is cams-ctrl, which carries the registrations and the
-	// Play/Stop commands. DefaultMediaAddr is cams-rtp2hls, which carries the RTP
-	// upload and turns it into fragments (cams-hub/cpp/libupstream, in
-	// ontavu/cams). They are not interchangeable: cams-ctrl answers MediaUpload
-	// with Unimplemented on purpose, so pointing the media upload at it uploads
+	// DefaultControlAddr serves Registrar and Controller: the registrations and
+	// the Play/Stop commands. DefaultMediaAddr serves Uploader, which carries the
+	// RTP upload. They are not interchangeable: the control endpoint answers
+	// MediaUpload with Unimplemented, so pointing the media upload at it uploads
 	// nothing at all.
 	DefaultControlAddr = "127.0.0.1:6000"
 	DefaultMediaAddr   = "127.0.0.1:6001"
 )
 
+// UpstreamConfig is the hub's control endpoint. Timeout, in seconds, bounds
+// one registration call; the control stream itself has none, being long-lived
+// by design.
 type UpstreamConfig struct {
 	Address string `json:"address"`
 	Timeout int64  `json:"timeout"`
 }
 
+// MediaConfig is the hub's media endpoint. It has no timeout, unlike the
+// control one: an upload is a stream that lasts as long as the camera plays,
+// and its liveness comes from the gRPC keepalive. It used to share
+// UpstreamConfig, so "media.timeout" was accepted and read by nothing; a file
+// that still carries it loads, and the field is ignored as before.
+type MediaConfig struct {
+	Address string `json:"address"`
+}
+
+// CameraConfig is one camera the configuration names; lanagent.CameraConfig
+// says what each field means.
 type CameraConfig struct {
 	Address  string `json:"address"`
+	UUID     string `json:"uuid,omitempty"`
 	User     string `json:"user,omitempty"`
 	Password string `json:"password,omitempty"`
 }
@@ -78,7 +92,7 @@ type AgentConfig struct {
 	Cameras    []CameraConfig `json:"cameras"`
 
 	UpstreamControl UpstreamConfig `json:"control"`
-	UpstreamMedia   UpstreamConfig `json:"media"`
+	UpstreamMedia   MediaConfig    `json:"media"`
 }
 
 func DefaultConfig() AgentConfig {
@@ -90,7 +104,7 @@ func DefaultConfig() AgentConfig {
 		CheckPeriod:      DefaultCheckPeriod,
 		RegisterPeriod:   DefaultRegisterPeriod,
 		UpstreamControl:  UpstreamConfig{Address: DefaultControlAddr, Timeout: DefaultUpstreamTimeout},
-		UpstreamMedia:    UpstreamConfig{Address: DefaultMediaAddr, Timeout: DefaultUpstreamTimeout},
+		UpstreamMedia:    MediaConfig{Address: DefaultMediaAddr},
 	}
 }
 
@@ -160,6 +174,7 @@ func (cfg *AgentConfig) lan() lanagent.Config {
 	for _, cam := range cfg.Cameras {
 		cameras = append(cameras, lanagent.CameraConfig{
 			Address:  cam.Address,
+			UUID:     cam.UUID,
 			User:     cam.User,
 			Password: cam.Password,
 		})

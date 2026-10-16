@@ -26,7 +26,18 @@ const (
 // CameraConfig describes a camera named in the configuration rather than
 // discovered.
 type CameraConfig struct {
-	Address  string
+	// Address is the device's host, or host:port when its ONVIF service is not
+	// on port 80: the form WS-Discovery reports, from which the device service
+	// URL http://<Address>/onvif/device_service is built. A URL is refused.
+	Address string
+
+	// UUID is the identifier the camera is registered under. Left empty, the
+	// device is asked for its endpoint reference, which is the identifier
+	// WS-Discovery advertises; a camera that cannot answer that needs one here.
+	UUID string
+
+	// User and Password replace the agent's credentials for this camera, each
+	// on its own: a field left empty keeps the agent's.
 	User     string
 	Password string
 }
@@ -40,11 +51,17 @@ type Config struct {
 	Password string
 
 	// Interfaces are always used; DiscoverPatterns select among the interfaces
-	// found on the system, a leading "!" excluding a match.
+	// found on the system. Each pattern is a regular expression that has to
+	// match the whole interface name, a leading "!" excluding a match. The first
+	// pattern that matches decides, and an interface none matches is left out.
+	// A pattern written as a glob, "eth*", is refused rather than read as "et"
+	// followed by any number of "h".
 	Interfaces       []string
 	DiscoverPatterns []string
 
-	// Cameras are the statically configured devices.
+	// Cameras are the statically configured devices, reached in addition to
+	// the discovered ones; discovery leaves their addresses to the static loop.
+	// They are never purged.
 	Cameras []CameraConfig
 
 	ScanPeriod  time.Duration

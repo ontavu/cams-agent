@@ -24,6 +24,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// rescanBacklog is how many rescans may wait for a loop that is busy with one,
+// an interface's or the configured cameras'. One: a second request while one
+// waits would look at the same devices, so it is dropped rather than queued.
+const rescanBacklog = 1
+
 type Nic struct {
 	ItfName string
 	trigger chan uint32
@@ -32,7 +37,7 @@ type Nic struct {
 func NewNIC(name string) *Nic {
 	return &Nic{
 		ItfName: name,
-		trigger: make(chan uint32, 1),
+		trigger: make(chan uint32, rescanBacklog),
 	}
 }
 

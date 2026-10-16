@@ -16,19 +16,23 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/ontavu/cams-agent/lanagent"
 )
 
 var encoded = `{
-    "discover": ["eth*", "enp*", "!wl*", "!lo"],
+    "discover": ["eth.*", "enp.*", "!wl.*", "!lo"],
     "scan_period": 5,
     "check_period": 5,
     "register_period": 5,
     "interfaces": [ "eno0" ],
     "cameras": [
-        {"address": "127.0.0.1", "user":"admin" },
+        {"address": "127.0.0.1", "uuid": "garage", "user":"admin" },
         {"address": "127.0.0.2", "user":"admin" }
     ],
     "control": {"address": "127.0.0.1:6000", "timeout": 10},
@@ -66,17 +70,17 @@ func TestConfig_FromEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertConfig(t, cfg, AgentConfig{
-		DiscoverPatterns: []string{"eth*", "enp*", "!wl*", "!lo"},
+		DiscoverPatterns: []string{"eth.*", "enp.*", "!wl.*", "!lo"},
 		ScanPeriod:       5,
 		CheckPeriod:      5,
 		RegisterPeriod:   5,
 		Interfaces:       []string{"eno0"},
 		Cameras: []CameraConfig{
-			{Address: "127.0.0.1", User: "admin"},
+			{Address: "127.0.0.1", UUID: "garage", User: "admin"},
 			{Address: "127.0.0.2", User: "admin"},
 		},
 		UpstreamControl: UpstreamConfig{Address: "127.0.0.1:6000", Timeout: 10},
-		UpstreamMedia:   UpstreamConfig{Address: "127.0.0.1:6000", Timeout: 10},
+		UpstreamMedia:   MediaConfig{Address: "127.0.0.1:6000"},
 	})
 }
 
@@ -95,30 +99,30 @@ func TestConfig_Override(t *testing.T) {
 			{Address: "127.0.0.2", User: "Z"},
 		},
 		UpstreamControl: UpstreamConfig{Address: "127.0.0.1:6001", Timeout: 10},
-		UpstreamMedia:   UpstreamConfig{Address: "127.0.0.1:6001", Timeout: 10},
+		UpstreamMedia:   MediaConfig{Address: "127.0.0.1:6001"},
 	}
 	if err := cfg.LoadString(encoded); err != nil {
 		t.Fatal(err)
 	}
 
 	assertConfig(t, cfg, AgentConfig{
-		DiscoverPatterns: []string{"eth*", "enp*", "!wl*", "!lo"},
+		DiscoverPatterns: []string{"eth.*", "enp.*", "!wl.*", "!lo"},
 		ScanPeriod:       5,
 		CheckPeriod:      5,
 		RegisterPeriod:   5,
 		Interfaces:       []string{"eno0"},
 		Cameras: []CameraConfig{
-			{Address: "127.0.0.1", User: "admin"},
+			{Address: "127.0.0.1", UUID: "garage", User: "admin"},
 			{Address: "127.0.0.2", User: "admin"},
 		},
 		UpstreamControl: UpstreamConfig{Address: "127.0.0.1:6000", Timeout: 10},
-		UpstreamMedia:   UpstreamConfig{Address: "127.0.0.1:6000", Timeout: 10},
+		UpstreamMedia:   MediaConfig{Address: "127.0.0.1:6000"},
 	})
 }
 
-// The two upstreams are different processes on different ports, and the
-// defaults used to name the same one -- which sent every media upload to
-// cams-ctrl, whose MediaUpload answers Unimplemented. Nothing else in this file
+// The two upstreams are different endpoints, and the defaults used to name the
+// same one -- which sent every media upload to the control endpoint, whose
+// MediaUpload answers Unimplemented. Nothing else in this file
 // covers DefaultConfig, because every other case loads an explicit fixture,
 // which is how that survived.
 func TestConfig_DefaultsSeparateControlFromMedia(t *testing.T) {
@@ -194,8 +198,8 @@ func TestLoadConfig_TheEnvironmentOnlySpeaksWhenItIsSet(t *testing.T) {
 	}
 }
 
-// The two upstreams are two processes on two ports. cams-ctrl answers
-// MediaUpload with Unimplemented on purpose, so an agent pointed at one address
+// The two upstreams are two endpoints. The control endpoint answers
+// MediaUpload with Unimplemented, so an agent pointed at one address
 // for both uploads nothing and reports nothing about why -- which is a failure
 // worth refusing at start-up rather than diagnosing from a silent camera.
 func TestLoadConfig_RefusesOneAddressForBothUpstreams(t *testing.T) {
@@ -214,5 +218,41 @@ func TestLoadConfig_RefusesOneAddressForBothUpstreams(t *testing.T) {
 func TestLoadConfig_RefusesAMissingFile(t *testing.T) {
 	if _, err := loadConfig(filepath.Join(t.TempDir(), "absent.json"), "", "", ""); err == nil {
 		t.Fatal("a missing configuration file was accepted")
+	}
+}
+
+// Every field of a configured camera reaches the LAN agent, beside the agent's
+// own credentials, which the camera falls back to.
+func TestConfig_LanCarriesTheCameras(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.CameraUser, cfg.CameraPassword = "admin", "agent-secret"
+	cfg.Cameras = []CameraConfig{
+		{Address: "192.168.1.64", UUID: "garage", User: "viewer", Password: "camera-secret"},
+	}
+
+	lan := cfg.lan()
+
+	want := lanagent.CameraConfig{
+		Address: "192.168.1.64", UUID: "garage", User: "viewer", Password: "camera-secret",
+	}
+	if len(lan.Cameras) != 1 || lan.Cameras[0] != want {
+		t.Fatalf("cameras = %+v, want [%+v]", lan.Cameras, want)
+	}
+	if lan.User != "admin" || lan.Password != "agent-secret" {
+		t.Fatalf("agent credentials = %q/%q", lan.User, lan.Password)
+	}
+}
+
+// The LAN agent refuses a pattern that is not one, so the defaults have to be
+// patterns it accepts.
+func TestConfig_DefaultsAreAcceptedByTheLanAgent(t *testing.T) {
+	cfg := DefaultConfig()
+	url := fmt.Sprintf("inproc://cams/test/%s-%d", t.Name(), time.Now().UnixNano())
+	lan, err := lanagent.New(cfg.lan(), nil, url)
+	if err != nil {
+		t.Fatalf("lanagent.New with the defaults: %v", err)
+	}
+	if err := lan.Close(); err != nil {
+		t.Errorf("agent close: %v", err)
 	}
 }

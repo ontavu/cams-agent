@@ -20,6 +20,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/jfsmig/onvif/v2/networking"
 	"github.com/jfsmig/onvif/v2/sdk"
 	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/camagent"
@@ -78,9 +79,9 @@ func main() {
 	cmd.Flags().StringVarP(&flagUser, "user", "u", "",
 		"the account these cameras are registered under")
 	cmd.Flags().StringVar(&flagControl, "control", "",
-		"cams-ctrl, which carries the registrations and Play/Pause")
+		"the hub's control endpoint, host:port: the registrations and the Play/Stop commands")
 	cmd.Flags().StringVar(&flagMedia, "media", "",
-		"cams-rtp2hls, which the media is uploaded to")
+		"the hub's media endpoint, host:port, which the streams are uploaded to")
 
 	if err := cmd.Execute(); err != nil {
 		utils.Logger.Fatal().Err(err).Str("action", "aborting").Msg("agent")
@@ -121,10 +122,10 @@ func loadConfig(path, user, control, media string) (AgentConfig, error) {
 		cfg.UpstreamMedia.Address = media
 	}
 
-	// The two upstreams are two processes on two ports and are not
-	// interchangeable -- cams-ctrl answers MediaUpload with Unimplemented on
-	// purpose -- so an agent pointed at one address for both uploads nothing
-	// and says nothing about why.
+	// The two upstreams are two endpoints and are not interchangeable -- the
+	// control endpoint answers MediaUpload with Unimplemented -- so an agent
+	// pointed at one address for both uploads nothing and says nothing about
+	// why.
 	if cfg.UpstreamControl.Address == cfg.UpstreamMedia.Address {
 		return cfg, errors.Errorf(
 			"control and media are the same address (%s); they are two processes",
@@ -175,7 +176,7 @@ func (b *cameraBundle) Close() error {
 // assembled. Handing this closure to the LAN agent is what keeps camagent out
 // of every other package.
 func newCameraFactory(cfg AgentConfig) lanagent.CameraFactory {
-	return func(appliance sdk.Appliance) (camctrl.CameraController, lanagent.CameraAgent, error) {
+	return func(appliance sdk.Appliance, auth networking.ClientAuth) (camctrl.CameraController, lanagent.CameraAgent, error) {
 		camID := appliance.GetUUID()
 		busURL := camBusURL(camID)
 		mediaURL := camMediaURL(camID)
@@ -187,9 +188,11 @@ func newCameraFactory(cfg AgentConfig) lanagent.CameraFactory {
 			return nil, nil, errors.Annotate(err, "media sink")
 		}
 
-		// The agent binds too, so the controller below can dial right away.
+		// The agent binds too, so the controller below can dial right away. The
+		// credentials are the device's, which for a configured camera may not be
+		// the agent's.
 		agent, err := camagent.New(camagent.FromSDK(appliance), busURL, mediaURL,
-			camagent.WithCredentials(cfg.CameraUser, cfg.CameraPassword))
+			camagent.WithCredentials(auth.Username, auth.Password))
 		if err != nil {
 			if cerr := sink.Close(); cerr != nil {
 				utils.Logger.Warn().Err(cerr).Str("cam", camID).Msg("media sink close")

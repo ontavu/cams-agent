@@ -18,13 +18,13 @@ package lanagent
 import (
 	"context"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/jfsmig/go-bags"
+	"github.com/jfsmig/onvif/v2/device"
 	"github.com/jfsmig/onvif/v2/networking"
 	"github.com/jfsmig/onvif/v2/sdk"
 	"github.com/juju/errors"
@@ -42,6 +42,14 @@ import (
 // know. Note that only its message crosses the bus, not its identity.
 var ErrNoSuchCamera = errors.New("no such camera")
 
+// deviceContactTimeout bounds the ONVIF exchange with one device, discovered or
+// configured. Each round learns its devices one after the other, and the HTTP
+// client has no timeout of its own, so a device -- or any host answering a
+// probe with an address that accepts the connection and never replies -- would
+// otherwise hold that loop, and every device after it, for as long as the
+// agent runs.
+const deviceContactTimeout = 15 * time.Second
+
 // CameraAgent is the runnable half of a camera. The LAN agent owns its
 // lifetime: it either submits Run to the camera swarm, or closes it when a
 // concurrent discovery turns out to have registered the same camera already.
@@ -52,14 +60,20 @@ type CameraAgent interface {
 	Close() error
 }
 
-// CameraFactory instantiates the agent of a freshly discovered camera and
-// returns a controller for it, together with the agent itself.
+// CameraFactory instantiates the agent of a freshly learned camera and returns a
+// controller for it, together with the agent itself. auth is what the device was
+// reached with, and what its media session has to be opened with: a camera the
+// configuration names may have credentials of its own.
 //
 // The LAN agent does not know how a camera agent is built, which is what keeps
 // camagent out of every package but the process entry point. It does name
 // camctrl, for the contract only: a controller package is a dependency this
 // agent is allowed to have, an agent package is not.
-type CameraFactory func(appliance sdk.Appliance) (camctrl.CameraController, CameraAgent, error)
+type CameraFactory func(appliance sdk.Appliance, auth networking.ClientAuth) (camctrl.CameraController, CameraAgent, error)
+
+// deviceOpener contacts a device and settles its identifier. Agent.openDevice
+// is the one in use; the tests put a camera of their own in its place.
+type deviceOpener func(ctx context.Context, info networking.ClientInfo, auth networking.ClientAuth) (sdk.Appliance, error)
 
 // cameraEntry is what the LAN agent keeps for each camera: the controller, plus
 // the discovery bookkeeping that belongs to the manager rather than to the
@@ -70,6 +84,13 @@ type cameraEntry struct {
 
 	// generation is the last discovery round in which the camera showed up.
 	generation uint32
+
+	// xaddr is where the device was reached, in canonicalXaddr's form.
+	xaddr string
+
+	// static marks a camera the configuration names. It is never purged: it is
+	// there because somebody asked for it, not because it answered a probe.
+	static bool
 }
 
 func (entry *cameraEntry) PK() string { return entry.id }
@@ -98,7 +119,21 @@ type Agent struct {
 	// Fields extracted from the configuration
 	devicesStatic              []CameraConfig
 	interfacesStatic           []string
-	interfacesDiscoverPatterns []string
+	interfacesDiscoverPatterns []interfacePattern
+
+	// staticAddresses are the addresses of devicesStatic, in canonicalXaddr's
+	// form: the ones discovery leaves to the static loop. Read-only after New.
+	staticAddresses map[string]bool
+
+	open deviceOpener
+
+	// contactTimeout is deviceContactTimeout, a field so that a test need not
+	// wait that long for a device that never answers.
+	contactTimeout time.Duration
+
+	// staticTrigger asks runStaticLoop for a round, the way Nic.trigger does
+	// for an interface.
+	staticTrigger chan uint32
 
 	nicsGroup swarm.Swarm
 	camsSwarm swarm.Swarm
@@ -109,7 +144,20 @@ type Agent struct {
 // Binding here rather than in Run is what lets main create a controller for the
 // agent straight away: a mangos dial is synchronous and would be refused by an
 // endpoint that is not bound yet.
+//
+// A discover pattern or a configured camera that cannot work is refused here,
+// before anything is bound, so that a mistake in the configuration stops the
+// agent at start-up instead of leaving it to run without the camera.
 func New(cfg Config, newCamera CameraFactory, bindURL string) (*Agent, error) {
+	patterns, err := compilePatterns(cfg.DiscoverPatterns)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	staticAddresses, err := validateStaticCameras(cfg.Cameras)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+
 	lan := &Agent{
 		cfg:        cfg,
 		newCamera:  newCamera,
@@ -118,12 +166,17 @@ func New(cfg Config, newCamera CameraFactory, bindURL string) (*Agent, error) {
 		devices:    make([]*cameraEntry, 0),
 		interfaces: make([]*Nic, 0),
 
-		interfacesDiscoverPatterns: cfg.DiscoverPatterns,
+		interfacesDiscoverPatterns: patterns,
 		interfacesStatic:           cfg.Interfaces,
 		devicesStatic:              cfg.Cameras,
+		staticAddresses:            staticAddresses,
+
+		staticTrigger:  make(chan uint32, rescanBacklog),
+		contactTimeout: deviceContactTimeout,
 
 		GraceGenerations: cfg.GraceGenerations,
 	}
+	lan.open = lan.openDevice
 
 	for _, itf := range cfg.Interfaces {
 		lan.registerInterface(itf)
@@ -286,6 +339,12 @@ func (lan *Agent) Run(ctx context.Context) {
 		}(itf)
 	}
 
+	// The configured cameras do not depend on any interface being selected, so
+	// they have a loop of their own.
+	if len(lan.devicesStatic) > 0 {
+		lan.nicsGroup.Run(func(c context.Context) { lan.runStaticLoop(c) })
+	}
+
 	lan.nicsGroup.Run(func(c context.Context) { lan.runTimers(c) })
 
 	// The bus joins the ensemble, so a bus failure tears the agent down the way
@@ -402,49 +461,131 @@ func (lan *Agent) discoverNics() error {
 }
 
 func (lan *Agent) maybeRegisterInterface(itf string) {
-	for _, pattern0 := range lan.interfacesDiscoverPatterns {
-		if len(pattern0) < 2 {
-			continue
-		}
-		pattern := pattern0
-		not := pattern[0] == '!'
-		if not {
-			pattern = pattern[1:]
-		}
-		if match, err := regexp.MatchString(pattern, itf); err != nil {
-			utils.Logger.Warn().Str("pattern", pattern0).Str("itf", itf).Err(err).Msg("disc")
-		} else if !match {
-			continue
-		} else if !not {
-			utils.Logger.Info().Str("pattern", pattern0).Str("itf", itf).Str("action", "add").Msg("disc")
-			lan.registerInterface(itf)
-		} else {
-			utils.Logger.Debug().Str("pattern", pattern0).Str("itf", itf).Str("action", "skip").Msg("disc")
-		}
-		return
+	selected, decidedBy := selectInterface(lan.interfacesDiscoverPatterns, itf)
+	switch {
+	case selected:
+		utils.Logger.Info().Str("pattern", decidedBy).Str("itf", itf).Str("action", "add").Msg("disc")
+		lan.registerInterface(itf)
+	case decidedBy != "":
+		utils.Logger.Debug().Str("pattern", decidedBy).Str("itf", itf).Str("action", "skip").Msg("disc")
+	default:
+		utils.Logger.Debug().Str("itf", itf).Str("action", "unmatched").Msg("disc")
 	}
 }
 
+// registerInterface adds an interface to probe, once. The registry keeps
+// duplicates, and an interface reached twice -- forced by the configuration and
+// selected by a pattern, or forced and then forced again by discoverNics --
+// would otherwise run two rescan loops probing the same link.
 func (lan *Agent) registerInterface(itf string) {
+	if lan.interfaces.Has(itf) {
+		return
+	}
 	lan.interfaces.Add(NewNIC(itf))
 }
 
-func (lan *Agent) learnSingleCameraSync(ctx context.Context, generation uint32, discovered networking.ClientInfo) error {
-	// Preliminary check of the existence of the camera, before starting expensive queries
-	lan.dataLock.Lock()
-	devInPlace, already := lan.devices.Get(discovered.Uuid)
-	if already && generation > devInPlace.generation {
-		devInPlace.generation = generation
+// openDevice contacts a device and settles its identifier.
+//
+// A discovered device arrives with the endpoint reference WS-Discovery
+// reported. A configured one arrives with the uuid of its configuration, often
+// none, and is then asked for its endpoint reference: ONVIF answers it with the
+// address of the device service's endpoint reference, which is the identifier
+// discovery advertises, so a camera reached both ways is registered once and
+// under one name. Not every device implements GetEndpointReference; one that
+// does not needs its uuid in the configuration.
+func (lan *Agent) openDevice(ctx context.Context, info networking.ClientInfo, auth networking.ClientAuth) (sdk.Appliance, error) {
+	client, err := networking.NewClient(info, &lan.httpClient)
+	if err != nil {
+		return nil, errors.Annotate(err, "onvif client")
 	}
-	lan.dataLock.Unlock()
-	if already {
+
+	// Wrapped first: it is the liveness probe, and it measures the device's
+	// clock, which the credentials of every later call are stamped against.
+	appliance, err := sdk.WrapClient(ctx, client, auth)
+	if err != nil {
+		return nil, errors.Annotate(err, "onvif device")
+	}
+
+	if client.GetUUID() == "" {
+		ref, err := device.Call_GetEndpointReference(ctx, client, device.GetEndpointReference{})
+		if err != nil {
+			return nil, errors.Annotate(err, "no identifier, and GetEndpointReference failed")
+		}
+		client.SetUUID(strings.TrimSpace(ref.GUID))
+	}
+	return appliance, nil
+}
+
+// findLocked returns the entry a device is already known under, or nil. The
+// caller holds dataLock.
+//
+// By identifier, and for a configured camera by address too, since one of
+// those is known before its identifier is: it was learned at that address, by
+// the static loop and nothing else, because discovery leaves the configured
+// addresses alone. Between discovered cameras the address proves nothing: one
+// of them may have taken an address another has left.
+func (lan *Agent) findLocked(id, xaddr string, static bool) *cameraEntry {
+	if id != "" {
+		if entry, ok := lan.devices.Get(id); ok {
+			return entry
+		}
+	}
+	if static {
+		for _, entry := range lan.devices {
+			if entry.static && entry.xaddr == xaddr {
+				return entry
+			}
+		}
+	}
+	return nil
+}
+
+// refreshLocked records that a known camera showed up again. The caller holds
+// dataLock.
+func refreshLocked(entry *cameraEntry, xaddr string, generation uint32, static bool) {
+	if generation > entry.generation {
+		entry.generation = generation
+	} // else ... stale discovery (why not?)
+
+	if static && entry.xaddr != xaddr {
+		// A configured camera that answered with the identifier of a camera
+		// known elsewhere: a clone shipped with the same uuid, one device on
+		// two addresses, or a host that claimed the identifier first. It is not
+		// learned, since one identifier names one camera; the entry already
+		// there is left as it was, and the operator is the one who can tell
+		// which case this is.
+		utils.Logger.Warn().
+			Str("key", entry.id).
+			Str("address", xaddr).
+			Str("known_at", entry.xaddr).
+			Msg("configured camera reports the identifier of another; set its uuid")
+	}
+}
+
+// refreshKnown is findLocked and refreshLocked under one acquisition of the
+// lock, and reports whether the camera was known.
+func (lan *Agent) refreshKnown(id, xaddr string, generation uint32, static bool) bool {
+	lan.dataLock.Lock()
+	defer lan.dataLock.Unlock()
+	entry := lan.findLocked(id, xaddr, static)
+	if entry != nil {
+		refreshLocked(entry, xaddr, generation, static)
+	}
+	return entry != nil
+}
+
+// learnSingleCameraSync makes one device a camera of the agent, unless it is
+// one already. static says it is named by the configuration rather than
+// discovered, and auth is what it is reached with.
+func (lan *Agent) learnSingleCameraSync(ctx context.Context, generation uint32, discovered networking.ClientInfo, auth networking.ClientAuth, static bool) error {
+	xaddr := canonicalXaddr(discovered.Xaddr)
+
+	// Preliminary check of the existence of the camera, before starting expensive queries
+	if lan.refreshKnown(discovered.Uuid, xaddr, generation, static) {
 		return nil
 	}
 
-	appliance, err := sdk.NewDevice(ctx, discovered, networking.ClientAuth{
-		Username: lan.cfg.User,
-		Password: lan.cfg.Password,
-	}, &lan.httpClient)
+	appliance, err := lan.open(ctx, discovered, auth)
 	if err != nil {
 		return errors.Trace(err)
 	}
@@ -457,8 +598,15 @@ func (lan *Agent) learnSingleCameraSync(ctx context.Context, generation uint32, 
 		return errors.NotValidf("camera identifier %q", camID)
 	}
 
+	// Checked again under the identifier the device gave, which for a
+	// configured camera is the first one there is. Building an agent for a
+	// camera already known would bind an endpoint only to release it.
+	if lan.refreshKnown(camID, xaddr, generation, static) {
+		return nil
+	}
+
 	// Here come the http requests
-	ctl, agent, err := lan.newCamera(appliance)
+	ctl, agent, err := lan.newCamera(appliance, auth)
 	if err != nil {
 		return errors.Annotate(err, "camera agent")
 	}
@@ -466,13 +614,11 @@ func (lan *Agent) learnSingleCameraSync(ctx context.Context, generation uint32, 
 	lan.dataLock.Lock()
 	defer lan.dataLock.Unlock()
 
-	// If the camera is already know, it's very unlikely, but it may happen in case of a stale discovery,
-	// let's just update its generation counter
-	devInPlace, already = lan.devices.Get(camID)
-	if already {
-		if generation > devInPlace.generation {
-			devInPlace.generation = generation
-		} // else ... stale discovery (why not?)
+	// Another round may have learned the same camera while this one was
+	// talking to it: the interfaces and the configured cameras are learned
+	// concurrently.
+	if devInPlace := lan.findLocked(camID, xaddr, static); devInPlace != nil {
+		refreshLocked(devInPlace, xaddr, generation, static)
 
 		// The agent we just built is redundant. It has already bound its bus
 		// endpoint, so dropping it on the floor would leak that endpoint.
@@ -484,17 +630,61 @@ func (lan *Agent) learnSingleCameraSync(ctx context.Context, generation uint32, 
 		id:         camID,
 		ctl:        ctl,
 		generation: generation,
+		xaddr:      xaddr,
+		static:     static,
 	}
 	lan.devices.Add(entry)
 	utils.Logger.Info().
 		Str("key", entry.PK()).
 		Str("endpoint", discovered.Xaddr).
 		Uint32("gen", generation).
+		Bool("static", static).
 		Str("action", "add").
 		Msg("device")
 
-	lan.camsSwarm.Run(agent.Run)
+	// The camera runs under the swarm's context, never under ctx: that one is
+	// the contact deadline of this exchange, and would stop the camera
+	// deviceContactTimeout after it was learned.
+	lan.camsSwarm.Run(func(runCtx context.Context) {
+		agent.Run(runCtx)
+		lan.forget(runCtx, entry)
+	})
 	return nil
+}
+
+// forget drops a camera whose agent has returned, so that a later round learns
+// it again.
+//
+// A camera agent returns when its context ends; on an EXIT, which only the
+// purge sends, having taken the entry already; or because its bundle stopped --
+// the upload to the hub broke, and the media sink with it. The entry used to
+// stay in that last case, holding a controller to a bus nobody served, and
+// since a known camera is never learned again, every PLAY failed until the
+// process restarted.
+//
+// Only the entry this agent was registered under is dropped. By now the
+// registry may hold none, if the purge took it, or a newer one for the same
+// camera; either way its controller belongs to whoever removed or added it.
+func (lan *Agent) forget(ctx context.Context, entry *cameraEntry) {
+	lan.dataLock.Lock()
+	current, ok := lan.devices.Get(entry.id)
+	owned := ok && current == entry
+	if owned {
+		lan.devices.Remove(entry.id)
+	}
+	lan.dataLock.Unlock()
+
+	if !owned {
+		return
+	}
+	if ctx.Err() == nil {
+		// Not a shutdown: the camera stopped on its own.
+		utils.Logger.Warn().Str("key", entry.PK()).Str("action", "forget").
+			Msg("device stopped, until the next rescan learns it again")
+	}
+	if err := entry.ctl.Close(); err != nil {
+		utils.Logger.Warn().Err(err).Str("key", entry.PK()).Str("action", "forget").Msg("device")
+	}
 }
 
 // discard releases a camera agent that was built but never started.
@@ -508,11 +698,28 @@ func (lan *Agent) discard(ctl camctrl.CameraController, agent CameraAgent) {
 }
 
 func (lan *Agent) learnAllCamerasSync(ctx context.Context, gen uint32, discovered []networking.ClientInfo) {
+	auth := networking.ClientAuth{Username: lan.cfg.User, Password: lan.cfg.Password}
+
 	// Update the devices that match the
 	for _, dev := range discovered {
-		if err := lan.learnSingleCameraSync(ctx, gen, dev); err != nil {
+		if lan.staticAddresses[canonicalXaddr(dev.Xaddr)] {
+			// Named by the configuration, with an identity and credentials of
+			// its own: the static loop learns it, and only the static loop.
+			utils.Logger.Debug().Str("url", dev.Xaddr).Str("action", "configured").Msg("device")
+			continue
+		}
+		if err := lan.learnDiscoveredCamera(ctx, gen, dev, auth); err != nil {
 			utils.Logger.Warn().Str("url", dev.Xaddr).Err(err).Msg("invalid device discovered")
 		}
+	}
+
+	// A round that the agent's stopping has interrupted purges nothing. The
+	// cameras are stopping with the agent, and forget closes each controller
+	// still registered. An EXIT sent to a camera agent that has already gone
+	// finds no peer, and waits out the whole send deadline before failing: one
+	// such wait per camera, against the grace a supervisor gives SIGTERM.
+	if ctx.Err() != nil {
+		return
 	}
 
 	// The entries are removed from the registry as they are selected, so each
@@ -527,13 +734,27 @@ func (lan *Agent) learnAllCamerasSync(ctx context.Context, gen uint32, discovere
 		// Outside the lock: both calls talk to the camera agent over the bus and
 		// may wait for it. Exit stops the agent for good, which is what a purge
 		// means; its Run then returns and leaves the camera swarm.
-		if err := entry.ctl.Exit(); err != nil {
-			utils.Logger.Warn().Err(err).Str("key", entry.PK()).Str("action", "purge").Msg("device")
+		//
+		// Not once the agent is stopping, for the reason above: the camera
+		// swarm stops what is left. The controller is still closed here, since
+		// the entry is out of the registry and forget will not see it.
+		if ctx.Err() == nil {
+			if err := entry.ctl.Exit(); err != nil {
+				utils.Logger.Warn().Err(err).Str("key", entry.PK()).Str("action", "purge").Msg("device")
+			}
 		}
 		if err := entry.ctl.Close(); err != nil {
 			utils.Logger.Warn().Err(err).Str("key", entry.PK()).Str("action", "purge").Msg("device")
 		}
 	}
+}
+
+// learnDiscoveredCamera is learnSingleCameraSync for one discovered device,
+// within deviceContactTimeout.
+func (lan *Agent) learnDiscoveredCamera(ctx context.Context, gen uint32, dev networking.ClientInfo, auth networking.ClientAuth) error {
+	ctx, cancel := context.WithTimeout(ctx, lan.contactTimeout)
+	defer cancel()
+	return lan.learnSingleCameraSync(ctx, gen, dev, auth, false)
 }
 
 // takeCamerasToPurge removes the cameras that have been missing for too long
@@ -569,6 +790,11 @@ func (lan *Agent) takeCamerasToPurge(gen uint32) []*cameraEntry {
 	// indices of the entries still to be examined valid.
 	for i := len(lan.devices); i > 0; i-- {
 		dev := lan.devices[i-1]
+		// A configured camera is not discovered, so its generation says nothing
+		// about whether it is still there.
+		if dev.static {
+			continue
+		}
 		if delta(gen, dev.generation) > lan.GraceGenerations {
 			out = append(out, dev)
 			lan.devices.Remove(dev.PK())
@@ -596,6 +822,10 @@ func (lan *Agent) triggerRescanAsync(ctx context.Context) {
 	gen := atomic.AddUint32(&lan.generation, 1)
 	for _, itf := range lan.interfaces {
 		itf.TriggerRescanAsync(ctx, gen)
+	}
+	// Only when runStaticLoop is running to take it, as Run decides.
+	if len(lan.devicesStatic) > 0 {
+		lan.triggerStaticAsync(ctx, gen)
 	}
 }
 

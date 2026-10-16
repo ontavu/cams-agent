@@ -86,7 +86,7 @@ func TestConfig_ProjectsOntoUpstreamAgent(t *testing.T) {
 		UpstreamControl: UpstreamConfig{Address: "hub.example:6000"},
 		// The media endpoint belongs to the per-camera sink, not to this agent,
 		// so it must not leak into the projection.
-		UpstreamMedia: UpstreamConfig{Address: "media.example:6001"},
+		UpstreamMedia: MediaConfig{Address: "media.example:6001"},
 	}
 
 	got := cfg.upstream()
