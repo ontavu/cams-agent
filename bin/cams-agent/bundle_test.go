@@ -22,11 +22,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jfsmig/onvif/v2/networking"
-	"github.com/jfsmig/onvif/v2/sdk"
 	"github.com/ontavu/cams-agent/camctrl"
 	"github.com/ontavu/cams-agent/lanagent"
 	"github.com/ontavu/cams-agent/mediabus"
+	"github.com/ontavu/onvif/v2/networking"
+	"github.com/ontavu/onvif/v2/sdk"
 )
 
 // testAppliance is a device as far as building a camera looks at one: its

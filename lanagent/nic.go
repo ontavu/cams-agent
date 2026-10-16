@@ -18,9 +18,9 @@ package lanagent
 import (
 	"context"
 
-	"github.com/jfsmig/go-wsd/wsd"
-	"github.com/jfsmig/onvif/v2/networking"
 	"github.com/ontavu/cams-go-utils/utils"
+	"github.com/ontavu/go-wsd/v2/wsd"
+	"github.com/ontavu/onvif/v2/networking"
 	"github.com/rs/zerolog"
 )
 

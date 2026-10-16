@@ -19,7 +19,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/jfsmig/onvif/v2/sdk"
+	"github.com/ontavu/onvif/v2/sdk"
 )
 
 // ONVIF spells the video encodings this way in VideoEncoderConfiguration.

@@ -48,10 +48,6 @@ github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/jfsmig/go-bags v0.3.0 h1:93tI0msEryAK2P6gYnXarCGEDBz9r5CzsqjJyi4yNA4=
 github.com/jfsmig/go-bags v0.3.0/go.mod h1:xGTXPsVGju09yMTmKHLxuBAqEpbBovfuw9e16AUCojE=
-github.com/jfsmig/go-wsd v1.0.0 h1:cl6SFGUeSB8YZCmC4FVOUz9xzsdTFo85GjF8uh4aPrE=
-github.com/jfsmig/go-wsd v1.0.0/go.mod h1:VeJMKRfK/1j6bhA3BNhbD4y/aytV0TW1E7uZKR1VRbE=
-github.com/jfsmig/onvif/v2 v2.0.1 h1:4E43oa0n4bQtN0WlXnlgRtymPp56gq/fDLVcAsCITfE=
-github.com/jfsmig/onvif/v2 v2.0.1/go.mod h1:brdHJEFF8QK4DH984zNEvWu+zBgcKv3xYIwPLGPVAZc=
 github.com/juju/errors v1.0.0 h1:yiq7kjCLll1BiaRuNY53MGI0+EQ3rF6GB+wvboZDefM=
 github.com/juju/errors v1.0.0/go.mod h1:B5x9thDqx0wIMH3+aLIMP9HjItInYWObRovoCFM5Qe8=
 github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI2bnpBCr8=
@@ -74,6 +70,10 @@ github.com/ontavu/cams-go-utils v0.4.0 h1:jXtG9Ul/FNkA42MUgZHB4MmIvESMemtp4L62aA
 github.com/ontavu/cams-go-utils v0.4.0/go.mod h1:AdKr+l7T0BkL+cSEE6S9IJkpqKyfaMJjTJbZ9Xomo/I=
 github.com/ontavu/go-swarm v0.1.0 h1:HD9vWd66Z6Y3I6E9VwvKrw6ppPwMIUhinaBNmKHUARs=
 github.com/ontavu/go-swarm v0.1.0/go.mod h1:vSC2UgMO3dQXOwwB+f+EwRP+SWC7Isr87fP8nIi67o0=
+github.com/ontavu/go-wsd/v2 v2.0.0 h1:1eor1OC1RzfpewiXAbWs0NesYuGlusim34GN7xaJGkQ=
+github.com/ontavu/go-wsd/v2 v2.0.0/go.mod h1:IS+oMUsbTUVgV84bnnqm6UjpxO9hagcCH2K5ocqZ0/A=
+github.com/ontavu/onvif/v2 v2.0.2 h1:8xuoMaApPTfsKXGbJ6Kf0pwG7w9YGKthu5xbOlvWMIE=
+github.com/ontavu/onvif/v2 v2.0.2/go.mod h1:wOzz8frkNNzaMmNjRqI/aDbLv6MmsksPnp1YHRHZt4s=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/pion/logging v0.2.4 h1:tTew+7cmQ+Mc1pTBLKH2puKsOvhm32dROumOZ655zB8=
 github.com/pion/logging v0.2.4/go.mod h1:DffhXTKYdNZU+KtJ5pyQDjvOAh/GsNSyv1lbkFbe3so=

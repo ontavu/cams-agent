@@ -24,12 +24,12 @@ import (
 	"time"
 
 	"github.com/jfsmig/go-bags"
-	"github.com/jfsmig/onvif/v2/device"
-	"github.com/jfsmig/onvif/v2/networking"
-	"github.com/jfsmig/onvif/v2/sdk"
 	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/agentbus"
 	"github.com/ontavu/cams-agent/camctrl"
+	"github.com/ontavu/onvif/v2/device"
+	"github.com/ontavu/onvif/v2/networking"
+	"github.com/ontavu/onvif/v2/sdk"
 	// Renamed because every method here names its receiver lan, which would
 	// hide the package.
 	hostlan "github.com/ontavu/cams-agent/lan"

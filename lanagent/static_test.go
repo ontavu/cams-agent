@@ -27,11 +27,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jfsmig/onvif/v2/networking"
-	"github.com/jfsmig/onvif/v2/sdk"
 	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/camctrl"
 	"github.com/ontavu/go-swarm"
+	"github.com/ontavu/onvif/v2/networking"
+	"github.com/ontavu/onvif/v2/sdk"
 )
 
 // fakeAppliance is a device as far as the LAN agent looks at one: its

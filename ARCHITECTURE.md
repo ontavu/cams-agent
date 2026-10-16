@@ -158,8 +158,8 @@ Do not reintroduce a fork: the hooks that motivated it (`ListenPacket`, `DialCon
 
 [cams-api]: https://github.com/ontavu/cams-api
 [gortsplib]: https://github.com/bluenviron/gortsplib
-[onvif]: https://github.com/jfsmig/onvif
-[go-wsd]: https://github.com/jfsmig/go-wsd
+[onvif]: https://github.com/ontavu/onvif
+[go-wsd]: https://github.com/ontavu/go-wsd
 [rfc2326]: https://datatracker.ietf.org/doc/html/rfc2326
 [rfc3550]: https://datatracker.ietf.org/doc/html/rfc3550
 [rfc6184]: https://datatracker.ietf.org/doc/html/rfc6184

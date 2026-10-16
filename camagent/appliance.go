@@ -18,8 +18,8 @@ package camagent
 import (
 	"context"
 
-	"github.com/jfsmig/onvif/v2/sdk"
 	"github.com/juju/errors"
+	"github.com/ontavu/onvif/v2/sdk"
 )
 
 // Appliance is the part of an ONVIF device this package uses: the identity

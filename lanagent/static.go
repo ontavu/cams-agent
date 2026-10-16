@@ -22,9 +22,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jfsmig/onvif/v2/networking"
 	"github.com/juju/errors"
 	"github.com/ontavu/cams-go-utils/utils"
+	"github.com/ontavu/onvif/v2/networking"
 )
 
 // The cameras the configuration names are learned by a loop of their own,

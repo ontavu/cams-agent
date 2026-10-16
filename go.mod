@@ -5,12 +5,12 @@ go 1.26.7
 require (
 	github.com/bluenviron/gortsplib/v5 v5.6.4
 	github.com/jfsmig/go-bags v0.3.0
-	github.com/jfsmig/go-wsd v1.0.0
-	github.com/jfsmig/onvif/v2 v2.0.1
 	github.com/juju/errors v1.0.0
 	github.com/ontavu/cams-api v1.0.0
 	github.com/ontavu/cams-go-utils v0.4.0
 	github.com/ontavu/go-swarm v0.1.0
+	github.com/ontavu/go-wsd/v2 v2.0.0
+	github.com/ontavu/onvif/v2 v2.0.2
 	github.com/pion/rtcp v1.2.17
 	github.com/pion/rtp v1.10.5
 	github.com/rs/zerolog v1.35.1

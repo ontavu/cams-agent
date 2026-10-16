@@ -20,8 +20,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/jfsmig/onvif/v2/networking"
-	"github.com/jfsmig/onvif/v2/sdk"
 	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/camagent"
 	"github.com/ontavu/cams-agent/camctrl"
@@ -30,6 +28,8 @@ import (
 	"github.com/ontavu/cams-agent/upagent"
 	"github.com/ontavu/cams-go-utils/utils"
 	"github.com/ontavu/go-swarm"
+	"github.com/ontavu/onvif/v2/networking"
+	"github.com/ontavu/onvif/v2/sdk"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 )

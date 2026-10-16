@@ -25,15 +25,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jfsmig/go-wsd/wsd"
-	"github.com/jfsmig/onvif/v2/networking"
-	"github.com/jfsmig/onvif/v2/sdk"
 	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/camagent"
 	"github.com/ontavu/cams-agent/camctrl"
 	"github.com/ontavu/cams-agent/lan"
 	"github.com/ontavu/cams-agent/mediabus"
 	"github.com/ontavu/cams-go-utils/utils"
+	"github.com/ontavu/go-wsd/v2/wsd"
+	"github.com/ontavu/onvif/v2/networking"
+	"github.com/ontavu/onvif/v2/sdk"
 )
 
 // Where the ONVIF credentials of the probed camera come from.

@@ -23,14 +23,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jfsmig/onvif/v2/sdk"
-	"github.com/jfsmig/onvif/v2/xsd"
-	"github.com/jfsmig/onvif/v2/xsd/onvif"
 	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/agentbus"
 	"github.com/ontavu/cams-agent/camagent"
 	"github.com/ontavu/cams-agent/camctrl"
 	"github.com/ontavu/cams-agent/mediabus"
+	"github.com/ontavu/onvif/v2/sdk"
+	"github.com/ontavu/onvif/v2/xsd"
+	"github.com/ontavu/onvif/v2/xsd/onvif"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/req"
 

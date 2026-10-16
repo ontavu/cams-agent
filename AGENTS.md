@@ -30,6 +30,11 @@ This module requires [cams-api](https://github.com/ontavu/cams-api), the gRPC co
 **at a tagged version, never through a `replace`**. A change to any of them is a release
 there, and then `go get <module>@vX.Y.Z` and `go mod tidy` here.
 
+ONVIF and WS-Discovery come from [onvif](https://github.com/ontavu/onvif) and
+[go-wsd](https://github.com/ontavu/go-wsd), under the same rule, and not from the
+`github.com/jfsmig` modules they started as. `onvif` v2.0.1 still declares the old path
+in its `go.mod` and cannot be required: v2.0.2 is the first tag that can.
+
 **Nothing outside this repository may import it, and the Cams hub above all.** This module
 is under the AGPL-3.0, and the hub is proprietary: linking this code would put the hub
 under the AGPL. What both sides need belongs in cams-go-utils, or in cams-api if it is

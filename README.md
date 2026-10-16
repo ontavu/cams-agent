@@ -14,8 +14,10 @@ and relays their streams to a hub. It is two commands:
 How it works inside is [ARCHITECTURE.md](ARCHITECTURE.md); the rules for changing it are
 [AGENTS.md](AGENTS.md). It speaks the contract of
 [cams-api](https://github.com/ontavu/cams-api), and builds on
-[cams-go-utils](https://github.com/ontavu/cams-go-utils) and
-[go-swarm](https://github.com/ontavu/go-swarm).
+[cams-go-utils](https://github.com/ontavu/cams-go-utils),
+[go-swarm](https://github.com/ontavu/go-swarm), and
+[onvif](https://github.com/ontavu/onvif) and [go-wsd](https://github.com/ontavu/go-wsd)
+for ONVIF and WS-Discovery.
 
 ## Install
 
