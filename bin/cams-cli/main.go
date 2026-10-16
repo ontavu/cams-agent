@@ -17,12 +17,17 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os/signal"
 	"syscall"
 
 	"github.com/ontavu/cams-go-utils/utils"
 	"github.com/spf13/cobra"
 )
+
+// defaultControlAddr is the hub's control endpoint when --control is not
+// given: the same default as cams-agent's, a hub on this machine.
+const defaultControlAddr = "127.0.0.1:6000"
 
 func main() {
 	ctx, cancel := signal.NotifyContext(
@@ -37,18 +42,23 @@ func main() {
 
 	cmdHub := &cobra.Command{
 		Use:   "hub",
-		Short: "Commands targetting the hub",
+		Short: "Commands targeting the hub",
 	}
 
+	var hubControl string
 	cmdHubPlay := &cobra.Command{
-		Use:   "play",
-		Short: "Play a stream",
-		Long:  "Contact the Cams Hub and download a stream given its User/Stream ID",
-		Args:  cobra.ExactArgs(2),
+		Use:   "play <user> <camera>",
+		Short: "Ask the hub to have an agent upload a camera's stream",
+		Long: "Ask the hub, through its Viewer service, to have the agent of <user> upload the " +
+			"stream of <camera>: the identifier the camera is registered under, which " +
+			"cams-agent logs as the key of each device it adds. Nothing is downloaded here.",
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return hubPlay(ctx, "127.0.0.1:6000", args[0], args[1])
+			return hubPlay(ctx, hubControl, args[0], args[1])
 		},
 	}
+	cmdHubPlay.Flags().StringVar(&hubControl, "control", defaultControlAddr,
+		"the hub's control endpoint, host:port")
 
 	cmdCam := &cobra.Command{
 		Use:   "cam",
@@ -57,9 +67,15 @@ func main() {
 
 	var camInterface string
 	cmdCamPlay := &cobra.Command{
-		Use:   "play",
-		Short: "play",
-		Args:  cobra.ExactArgs(1),
+		Use:   "play <host[:port]>",
+		Short: fmt.Sprintf("Record %v of a camera into a capture archive, with no hub", captureDuration),
+		Long: fmt.Sprintf("Find the camera at <host[:port]> by WS-Discovery and record %v of its "+
+			"stream into a capture archive in the temporary directory, whose path is logged. "+
+			"The address is the one the camera advertises, exactly: cams-agent logs it as the "+
+			"endpoint of each device it adds. The ONVIF credentials come from %s, admin by "+
+			"default, and %s, which is required.",
+			captureDuration, envCamUser, envCamPassword),
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return camPlay(ctx, args[0], camInterface)
 		},

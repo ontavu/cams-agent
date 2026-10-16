@@ -46,6 +46,10 @@ import (
 const (
 	envCamUser     = "CAMS_ONVIF_USER"
 	envCamPassword = "CAMS_ONVIF_PASSWORD"
+
+	// captureDuration is how long `cam play` records before it stops the
+	// camera and closes the archive. Ctrl-C ends it sooner.
+	captureDuration = 10 * time.Second
 )
 
 // camCredentials reads the credentials of the camera about to be driven.
@@ -213,7 +217,7 @@ func runOneCamera(ctx context.Context, dev sdk.Appliance, auth networking.Client
 
 	select {
 	case <-ctx.Done():
-	case <-time.After(10 * time.Second):
+	case <-time.After(captureDuration):
 	}
 	utils.Logger.Info().Msg("stream ending")
 
@@ -278,8 +282,8 @@ func (sink *tarMediaSink) Run(ctx context.Context) {
 }
 
 // onFrame names each frame by its type and its track, so that a capture of a
-// multi-media session can be replayed one media at a time. The C++ replay
-// harness matches on the extension alone and ignores the rest.
+// multi-media session can be replayed one media at a time. The extension alone
+// says what an entry holds; README.md describes the format.
 func (sink *tarMediaSink) onFrame(_ context.Context, f mediabus.Frame) error {
 	var tag string
 	switch f.Type {
