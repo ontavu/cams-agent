@@ -17,6 +17,7 @@ package lanagent
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -27,7 +28,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/camctrl"
 	"github.com/ontavu/go-swarm"
 	"github.com/ontavu/onvif/v2/networking"
@@ -954,14 +954,14 @@ func TestLearn_ADeviceThatNeverAnswersHoldsBackNothing(t *testing.T) {
 			lan.open = func(ctx context.Context, info networking.ClientInfo, auth networking.ClientAuth) (sdk.Appliance, error) {
 				if info.Xaddr == "192.168.1.64" {
 					<-ctx.Done()
-					return nil, errors.Trace(ctx.Err())
+					return nil, ctx.Err()
 				}
 				// The real opener honours its context for every device. Doing
 				// the same here is what tells a deadline per device from one
 				// shared by the round, which the silent device would have
 				// spent for everybody after it.
 				if err := ctx.Err(); err != nil {
-					return nil, errors.Trace(err)
+					return nil, err
 				}
 				return network.open(ctx, info, auth)
 			}

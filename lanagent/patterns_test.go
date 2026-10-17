@@ -16,8 +16,11 @@
 package lanagent
 
 import (
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/ontavu/cams-agent/errkind"
 )
 
 // The default of bin/cams-agent, and the example of README.md. Copied rather
@@ -170,5 +173,15 @@ func TestDiscoverNics_ForcedInterfaceRegisteredOnce(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("cams-test0 registered %d times, want once", count)
+	}
+}
+
+// An empty pattern is refused as not valid, so that a caller of New can tell
+// a configuration mistake from a failure to bind.
+func TestCompilePatterns_EmptyIsNotValid(t *testing.T) {
+	for _, pattern := range []string{"", "!"} {
+		if _, err := compilePatterns([]string{pattern}); !errors.Is(err, errkind.ErrNotValid) {
+			t.Fatalf("compilePatterns(%q): %v, want ErrNotValid", pattern, err)
+		}
 	}
 }

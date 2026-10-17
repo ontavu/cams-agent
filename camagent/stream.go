@@ -17,6 +17,8 @@ package camagent
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/url"
 	"sync"
 	"sync/atomic"
@@ -27,8 +29,8 @@ import (
 	"github.com/bluenviron/gortsplib/v5/pkg/description"
 	"github.com/bluenviron/gortsplib/v5/pkg/format"
 	"github.com/bluenviron/gortsplib/v5/pkg/liberrors"
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/camctrl"
+	"github.com/ontavu/cams-agent/errkind"
 	"github.com/ontavu/cams-agent/mediabus"
 	"github.com/ontavu/cams-go-utils/utils"
 	"github.com/pion/rtcp"
@@ -155,7 +157,7 @@ func (cam *Agent) runStreamOnce(ctx context.Context) error {
 	// Prepare the camera RTSP side
 	sourceUrl, err := cam.queryMediaUrl(ctx)
 	if err != nil {
-		return errors.Annotate(err, "queryMediaUrl")
+		return fmt.Errorf("queryMediaUrl: %w", err)
 	}
 
 	cam.debug().Str("url", sourceUrl.Host).Msg("cam streaming")
@@ -180,14 +182,14 @@ func (cam *Agent) runStreamOnce(ctx context.Context) error {
 	}
 
 	if err = client.Start(); err != nil {
-		return errors.Annotate(err, "start")
+		return fmt.Errorf("start: %w", err)
 	}
 	// Closing is also what tears the session down at the camera.
 	defer client.Close()
 
 	desc, sdpResp, err := client.Describe(sourceUrl)
 	if err != nil {
-		return errors.Annotate(err, "describe")
+		return fmt.Errorf("describe: %w", err)
 	}
 	sdp := string(sdpResp.Body)
 	cam.debug().
@@ -205,7 +207,7 @@ func (cam *Agent) runStreamOnce(ctx context.Context) error {
 	// stopped is reported now instead of swallowing a stream's worth of frames.
 	pusher, err := mediabus.DialPush("cam "+cam.id, cam.mediaURL)
 	if err != nil {
-		return errors.Annotate(err, "dial media bus")
+		return fmt.Errorf("dial media bus: %w", err)
 	}
 	defer func() {
 		if cerr := pusher.Close(); cerr != nil {
@@ -220,7 +222,7 @@ func (cam *Agent) runStreamOnce(ctx context.Context) error {
 			continue
 		}
 		if _, err = client.Setup(desc.BaseURL, m, 0, 0); err != nil {
-			return errors.Annotate(err, "RTSP Setup")
+			return fmt.Errorf("RTSP Setup: %w", err)
 		}
 		utils.Logger.Info().Interface("media", *m).Msg("RTSP Setup")
 	}
@@ -255,12 +257,12 @@ func (cam *Agent) runStreamOnce(ctx context.Context) error {
 	// stream it cannot interpret. The queue is empty at this point, so the only
 	// way this fails is an upstream that is not there.
 	if err = pusher.Send(mediabus.FrameSDP, sdpTrack, []byte(sdp)); err != nil {
-		return errors.Annotate(err, "send sdp banner")
+		return fmt.Errorf("send sdp banner: %w", err)
 	}
 
 	// Spawn goroutines that will consume the camera stream
 	if _, err = client.Play(nil); err != nil {
-		return errors.Annotate(err, "play")
+		return fmt.Errorf("play: %w", err)
 	}
 
 	g, gctx := errgroup.WithContext(streamCtx)
@@ -296,7 +298,7 @@ func (cam *Agent) runStreamOnce(ctx context.Context) error {
 	// teardown and the real cause is the one the sink recorded.
 	if err == nil {
 		if serr := sink.Err(); serr != nil {
-			return errors.Annotate(serr, "upstream")
+			return fmt.Errorf("upstream: %w", serr)
 		}
 	}
 	return err
@@ -309,11 +311,11 @@ func (cam *Agent) queryMediaUrl(ctx context.Context) (*base.URL, error) {
 	// nothing either: sdk.deviceWrapper holds a client and no profile state.
 	offered, err := cam.onvifClient.MediaProfiles(ctx)
 	if err != nil {
-		return nil, errors.Annotate(err, "profiles")
+		return nil, fmt.Errorf("profiles: %w", err)
 	}
 	chosen, ok := chooseProfile(videoProfilesOf(offered))
 	if !ok {
-		return nil, errors.NotFoundf("no ONVIF profile offering a video stream")
+		return nil, fmt.Errorf("no ONVIF profile offering a video stream %w", errkind.ErrNotFound)
 	}
 	cam.debug().
 		Str("profile", chosen.token).
@@ -336,11 +338,11 @@ func (cam *Agent) queryMediaUrl(ctx context.Context) (*base.URL, error) {
 
 	streamURI, err := cam.credentialled(chosen.uri)
 	if err != nil {
-		return nil, errors.Annotate(err, "credentials")
+		return nil, fmt.Errorf("credentials: %w", err)
 	}
 	sourceUrl, err := base.ParseURL(streamURI)
 	if err != nil {
-		return nil, errors.Annotate(err, "parse")
+		return nil, fmt.Errorf("parse: %w", err)
 	}
 
 	// Logged without the credentials. This used to print the URL twice, both
@@ -364,7 +366,7 @@ func (cam *Agent) credentialled(raw string) (string, error) {
 	}
 	parsed, err := url.Parse(raw)
 	if err != nil {
-		return "", errors.Annotate(err, "parse")
+		return "", fmt.Errorf("parse: %w", err)
 	}
 	parsed.User = url.UserPassword(cam.user, cam.password)
 	return parsed.String(), nil

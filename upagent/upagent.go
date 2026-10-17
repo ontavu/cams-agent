@@ -25,13 +25,14 @@ package upagent
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/agentbus"
 	"github.com/ontavu/cams-agent/camctrl"
+	"github.com/ontavu/cams-agent/errkind"
 	"github.com/ontavu/cams-agent/lanctrl"
 	"github.com/ontavu/cams-agent/upctrl"
 	"github.com/ontavu/cams-api/pb"
@@ -79,7 +80,7 @@ func New(cfg Config, lan lanctrl.LanController, bindURL string) (*Agent, error) 
 
 	bus, err := agentbus.Listen("upstream", bindURL)
 	if err != nil {
-		return nil, errors.Trace(err)
+		return nil, err
 	}
 	us.bus = bus
 
@@ -90,7 +91,7 @@ func New(cfg Config, lan lanctrl.LanController, bindURL string) (*Agent, error) 
 // it on its way out, so this is only for the construction paths that give up
 // before starting; calling it twice is harmless.
 func (us *Agent) Close() error {
-	return errors.Trace(us.bus.Close())
+	return us.bus.Close()
 }
 
 // State reports whether the link to the hub is up.
@@ -146,7 +147,7 @@ func (us *Agent) dispatch(_ context.Context, verb, arg string) (reply []byte, ex
 		return agentbus.EncodeErr(err), false
 	}
 	if arg != "" {
-		return agentbus.EncodeErr(errors.NotValidf("argument %q to %s", arg, verb)), false
+		return agentbus.EncodeErr(fmt.Errorf("argument %q to %s %w", arg, verb, errkind.ErrNotValid)), false
 	}
 
 	switch cmd {
@@ -156,7 +157,7 @@ func (us *Agent) dispatch(_ context.Context, verb, arg string) (reply []byte, ex
 		return agentbus.EncodeOK(string(us.State())), false
 	default:
 		// ParseCommand accepted it, so this package is missing a case.
-		err := errors.NotSupportedf("command %q", string(cmd))
+		err := fmt.Errorf("command %q %w", string(cmd), errkind.ErrNotSupported)
 		utils.Logger.Warn().Err(err).Msg("up bus command")
 		return agentbus.EncodeErr(err), false
 	}
@@ -231,7 +232,7 @@ func (us *Agent) openControl(ctx context.Context, client pb.ControllerClient) (c
 
 	stream, err := client.Control(ctx)
 	if err != nil {
-		return nil, errors.Annotate(err, "control open")
+		return nil, fmt.Errorf("control open: %w", err)
 	}
 	return stream, nil
 }
@@ -251,7 +252,7 @@ func (us *Agent) readControl(_ context.Context, stream controlStream) error {
 	for {
 		request, err := stream.Recv()
 		if err != nil {
-			return errors.Annotate(err, "control recv")
+			return fmt.Errorf("control recv: %w", err)
 		}
 
 		if err := us.onCommand(request); err != nil {
@@ -269,12 +270,17 @@ func (us *Agent) onCommand(request *pb.DownstreamControlRequest) error {
 
 	switch request.Command {
 	case pb.DownstreamCommandType_DOWNSTREAM_COMMAND_TYPE_PLAY:
-		return errors.Annotate(us.lan.Play(camID), "play")
+		if err := us.lan.Play(camID); err != nil {
+			return fmt.Errorf("play: %w", err)
+		}
 	case pb.DownstreamCommandType_DOWNSTREAM_COMMAND_TYPE_STOP:
-		return errors.Annotate(us.lan.Pause(camID), "pause")
+		if err := us.lan.Pause(camID); err != nil {
+			return fmt.Errorf("pause: %w", err)
+		}
 	default:
-		return errors.NotSupportedf("hub command %v", request.Command)
+		return fmt.Errorf("hub command %v %w", request.Command, errkind.ErrNotSupported)
 	}
+	return nil
 }
 
 // runRegistrar tells the hub about the local streams, over and over.
@@ -290,7 +296,7 @@ func (us *Agent) runRegistrar(ctx context.Context, client registrar) error {
 		case <-next:
 			next = time.After(us.cfg.registerPeriod())
 			if err := us.registerAll(ctx, client); err != nil {
-				return errors.Trace(err)
+				return err
 			}
 		}
 	}
@@ -367,7 +373,7 @@ func (us *Agent) registerAll(ctx context.Context, client registrar) error {
 			_, err := client.Register(callCtx, &inReq)
 			return err
 		}(); err != nil {
-			return errors.Annotate(err, "register")
+			return fmt.Errorf("register: %w", err)
 		}
 	}
 	return nil

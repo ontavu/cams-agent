@@ -24,11 +24,12 @@ package camagent
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/agentbus"
 	"github.com/ontavu/cams-agent/camctrl"
+	"github.com/ontavu/cams-agent/errkind"
 	"github.com/ontavu/cams-go-utils/utils"
 	"github.com/ontavu/go-swarm"
 	"github.com/rs/zerolog"
@@ -117,7 +118,7 @@ func New(appliance Appliance, bindURL, mediaURL string, opts ...Option) (*Agent,
 
 	bus, err := agentbus.Listen("cam "+cam.id, bindURL)
 	if err != nil {
-		return nil, errors.Trace(err)
+		return nil, err
 	}
 	cam.bus = bus
 
@@ -131,7 +132,7 @@ func (cam *Agent) ID() string { return cam.id }
 // it on its way out, so this is only for the construction paths that give the
 // agent up before starting it; calling it twice is harmless.
 func (cam *Agent) Close() error {
-	return errors.Trace(cam.bus.Close())
+	return cam.bus.Close()
 }
 
 // Run serves the bus until the context is cancelled or an EXIT is received. It
@@ -171,7 +172,7 @@ func (cam *Agent) dispatch(ctx context.Context, verb, arg string) (reply []byte,
 		return agentbus.EncodeErr(err), false
 	}
 	if arg != "" {
-		err := errors.NotValidf("argument %q to %s", arg, verb)
+		err := fmt.Errorf("argument %q to %s %w", arg, verb, errkind.ErrNotValid)
 		cam.warn(err).Msg("cam bus command")
 		return agentbus.EncodeErr(err), false
 	}
@@ -192,7 +193,7 @@ func (cam *Agent) dispatch(ctx context.Context, verb, arg string) (reply []byte,
 		return agentbus.EncodeOK(""), true
 	default:
 		// ParseCommand accepted it, so this package is missing a case.
-		err := errors.NotSupportedf("command %q", string(cmd))
+		err := fmt.Errorf("command %q %w", string(cmd), errkind.ErrNotSupported)
 		cam.warn(err).Msg("cam bus command")
 		return agentbus.EncodeErr(err), false
 	}

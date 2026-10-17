@@ -17,8 +17,8 @@ package upagent
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/ontavu/cams-agent/camctrl"
 	"io"
 	"strings"
 	"sync"
@@ -26,8 +26,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/agentbus"
+	"github.com/ontavu/cams-agent/camctrl"
 	"github.com/ontavu/cams-agent/lanctrl"
 	"github.com/ontavu/cams-agent/upctrl"
 	"github.com/ontavu/cams-api/pb"

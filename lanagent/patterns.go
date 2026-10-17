@@ -16,11 +16,12 @@
 package lanagent
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
 
-	"github.com/juju/errors"
+	"github.com/ontavu/cams-agent/errkind"
 )
 
 // interfacePattern is one of Config.DiscoverPatterns, compiled.
@@ -46,23 +47,23 @@ func compilePatterns(patterns []string) ([]interfacePattern, error) {
 	for _, source := range patterns {
 		expr, exclude := strings.CutPrefix(source, "!")
 		if expr == "" {
-			return nil, errors.NotValidf("interface pattern %q", source)
+			return nil, fmt.Errorf("interface pattern %q %w", source, errkind.ErrNotValid)
 		}
 		if suggestion, shaped := globShaped(expr); shaped {
 			if exclude {
 				suggestion = "!" + suggestion
 			}
-			return nil, errors.Errorf("interface pattern %q reads as a glob, and patterns are "+
+			return nil, fmt.Errorf("interface pattern %q reads as a glob, and patterns are "+
 				"regular expressions matching the whole name: write %q", source, suggestion)
 		}
 		// Checked as written first, so that the error quotes what the operator
 		// wrote rather than the anchored form.
 		if _, err := regexp.Compile(expr); err != nil {
-			return nil, errors.Annotatef(err, "interface pattern %q", source)
+			return nil, fmt.Errorf("interface pattern %q: %w", source, err)
 		}
 		re, err := regexp.Compile("^(?:" + expr + ")$")
 		if err != nil {
-			return nil, errors.Annotatef(err, "interface pattern %q", source)
+			return nil, fmt.Errorf("interface pattern %q: %w", source, err)
 		}
 		out = append(out, interfacePattern{source: source, exclude: exclude, re: re})
 	}

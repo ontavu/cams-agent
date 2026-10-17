@@ -17,8 +17,9 @@ package camagent
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/juju/errors"
+	"github.com/ontavu/cams-agent/errkind"
 	"github.com/ontavu/onvif/v2/sdk"
 )
 
@@ -53,7 +54,7 @@ func (a sdkAppliance) GetUUID() string { return a.dev.GetUUID() }
 func (a sdkAppliance) MediaProfiles(ctx context.Context) (sdk.MediaProfiles, error) {
 	profileS, ok := a.dev.ProfileS()
 	if !ok {
-		return sdk.MediaProfiles{}, errors.NotFoundf("ONVIF Profile S on the appliance")
+		return sdk.MediaProfiles{}, fmt.Errorf("ONVIF Profile S on the appliance %w", errkind.ErrNotFound)
 	}
 	return profileS.FetchMediaProfiles(ctx), nil
 }

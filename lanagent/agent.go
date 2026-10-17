@@ -17,6 +17,8 @@ package lanagent
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -24,12 +26,13 @@ import (
 	"time"
 
 	"github.com/jfsmig/go-bags"
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/agentbus"
 	"github.com/ontavu/cams-agent/camctrl"
+	"github.com/ontavu/cams-agent/errkind"
 	"github.com/ontavu/onvif/v2/device"
 	"github.com/ontavu/onvif/v2/networking"
 	"github.com/ontavu/onvif/v2/sdk"
+
 	// Renamed because every method here names its receiver lan, which would
 	// hide the package.
 	hostlan "github.com/ontavu/cams-agent/lan"
@@ -151,11 +154,11 @@ type Agent struct {
 func New(cfg Config, newCamera CameraFactory, bindURL string) (*Agent, error) {
 	patterns, err := compilePatterns(cfg.DiscoverPatterns)
 	if err != nil {
-		return nil, errors.Trace(err)
+		return nil, err
 	}
 	staticAddresses, err := validateStaticCameras(cfg.Cameras)
 	if err != nil {
-		return nil, errors.Trace(err)
+		return nil, err
 	}
 
 	lan := &Agent{
@@ -184,7 +187,7 @@ func New(cfg Config, newCamera CameraFactory, bindURL string) (*Agent, error) {
 
 	bus, err := agentbus.Listen("lan", bindURL)
 	if err != nil {
-		return nil, errors.Trace(err)
+		return nil, err
 	}
 	lan.bus = bus
 
@@ -195,7 +198,7 @@ func New(cfg Config, newCamera CameraFactory, bindURL string) (*Agent, error) {
 // it on its way out, so this is only for the construction paths that give up
 // before starting; calling it twice is harmless.
 func (lan *Agent) Close() error {
-	return errors.Trace(lan.bus.Close())
+	return lan.bus.Close()
 }
 
 // dispatch answers one request from the bus.
@@ -213,7 +216,7 @@ func (lan *Agent) dispatch(_ context.Context, verb, arg string) (reply []byte, e
 	switch cmd {
 	case lanctrl.CommandList:
 		if arg != "" {
-			return agentbus.EncodeErr(errors.NotValidf("argument %q to %s", arg, verb)), false
+			return agentbus.EncodeErr(fmt.Errorf("argument %q to %s %w", arg, verb, errkind.ErrNotValid)), false
 		}
 		return agentbus.EncodeOK(lanctrl.EncodeIDs(lan.Cameras())), false
 
@@ -222,7 +225,7 @@ func (lan *Agent) dispatch(_ context.Context, verb, arg string) (reply []byte, e
 
 	case lanctrl.CommandPlay, lanctrl.CommandPause:
 		if arg == "" {
-			return agentbus.EncodeErr(errors.NotValidf("%s without a camera", verb)), false
+			return agentbus.EncodeErr(fmt.Errorf("%s without a camera %w", verb, errkind.ErrNotValid)), false
 		}
 		if err := lan.UpdateStreamExpectation(arg, cmd); err != nil {
 			utils.Logger.Warn().Err(err).Str("cam", arg).Msg("lan bus command")
@@ -232,7 +235,7 @@ func (lan *Agent) dispatch(_ context.Context, verb, arg string) (reply []byte, e
 
 	case lanctrl.CommandMedia:
 		if arg == "" {
-			return agentbus.EncodeErr(errors.NotValidf("%s without a camera", verb)), false
+			return agentbus.EncodeErr(fmt.Errorf("%s without a camera %w", verb, errkind.ErrNotValid)), false
 		}
 		media, err := lan.CameraMedia(arg)
 		if err != nil {
@@ -243,7 +246,7 @@ func (lan *Agent) dispatch(_ context.Context, verb, arg string) (reply []byte, e
 
 	default:
 		// ParseCommand accepted it, so this package is missing a case.
-		err := errors.NotSupportedf("command %q", string(cmd))
+		err := fmt.Errorf("command %q %w", string(cmd), errkind.ErrNotSupported)
 		utils.Logger.Warn().Err(err).Msg("lan bus command")
 		return agentbus.EncodeErr(err), false
 	}
@@ -265,10 +268,13 @@ func (lan *Agent) CameraMedia(camID string) (camctrl.Media, error) {
 	}()
 
 	if entry == nil {
-		return camctrl.Media{}, errors.Annotate(ErrNoSuchCamera, camID)
+		return camctrl.Media{}, fmt.Errorf("%s: %w", camID, ErrNoSuchCamera)
 	}
 	media, err := entry.ctl.Media()
-	return media, errors.Annotate(err, "media")
+	if err != nil {
+		return media, fmt.Errorf("media: %w", err)
+	}
+	return media, nil
 }
 
 // UpdateStreamExpectation forwards a command from the hub to one camera.
@@ -282,17 +288,22 @@ func (lan *Agent) UpdateStreamExpectation(camId string, cmd lanctrl.Command) err
 	}(camId)
 
 	if entry == nil {
-		return errors.Annotate(ErrNoSuchCamera, camId)
+		return fmt.Errorf("%s: %w", camId, ErrNoSuchCamera)
 	}
 
 	switch cmd {
 	case lanctrl.CommandPlay:
-		return errors.Annotate(entry.ctl.Play(), "play")
+		if err := entry.ctl.Play(); err != nil {
+			return fmt.Errorf("play: %w", err)
+		}
 	case lanctrl.CommandPause:
-		return errors.Annotate(entry.ctl.Pause(), "pause")
+		if err := entry.ctl.Pause(); err != nil {
+			return fmt.Errorf("pause: %w", err)
+		}
 	default:
-		return errors.NotSupportedf("command %q", string(cmd))
+		return fmt.Errorf("command %q %w", string(cmd), errkind.ErrNotSupported)
 	}
+	return nil
 }
 
 func (lan *Agent) Run(ctx context.Context) {
@@ -444,7 +455,7 @@ func (lan *Agent) pingCameras() {
 func (lan *Agent) discoverNics() error {
 	itfs, err := hostlan.DiscoverSystemNics()
 	if err != nil {
-		return errors.Trace(err)
+		return err
 	}
 
 	utils.Logger.Trace().Strs("interfaces", itfs).Msg("disc")
@@ -496,20 +507,20 @@ func (lan *Agent) registerInterface(itf string) {
 func (lan *Agent) openDevice(ctx context.Context, info networking.ClientInfo, auth networking.ClientAuth) (sdk.Appliance, error) {
 	client, err := networking.NewClient(info, &lan.httpClient)
 	if err != nil {
-		return nil, errors.Annotate(err, "onvif client")
+		return nil, fmt.Errorf("onvif client: %w", err)
 	}
 
 	// Wrapped first: it is the liveness probe, and it measures the device's
 	// clock, which the credentials of every later call are stamped against.
 	appliance, err := sdk.WrapClient(ctx, client, auth)
 	if err != nil {
-		return nil, errors.Annotate(err, "onvif device")
+		return nil, fmt.Errorf("onvif device: %w", err)
 	}
 
 	if client.GetUUID() == "" {
 		ref, err := device.Call_GetEndpointReference(ctx, client, device.GetEndpointReference{})
 		if err != nil {
-			return nil, errors.Annotate(err, "no identifier, and GetEndpointReference failed")
+			return nil, fmt.Errorf("no identifier, and GetEndpointReference failed: %w", err)
 		}
 		client.SetUUID(strings.TrimSpace(ref.GUID))
 	}
@@ -587,7 +598,7 @@ func (lan *Agent) learnSingleCameraSync(ctx context.Context, generation uint32, 
 
 	appliance, err := lan.open(ctx, discovered, auth)
 	if err != nil {
-		return errors.Trace(err)
+		return err
 	}
 
 	// An identifier is what a LIST reply is made of, and the fields there are
@@ -595,7 +606,7 @@ func (lan *Agent) learnSingleCameraSync(ctx context.Context, generation uint32, 
 	// before it can make a reply ambiguous.
 	camID := appliance.GetUUID()
 	if camID == "" || strings.ContainsAny(camID, " \t\r\n") {
-		return errors.NotValidf("camera identifier %q", camID)
+		return fmt.Errorf("camera identifier %q %w", camID, errkind.ErrNotValid)
 	}
 
 	// Checked again under the identifier the device gave, which for a
@@ -608,7 +619,7 @@ func (lan *Agent) learnSingleCameraSync(ctx context.Context, generation uint32, 
 	// Here come the http requests
 	ctl, agent, err := lan.newCamera(appliance, auth)
 	if err != nil {
-		return errors.Annotate(err, "camera agent")
+		return fmt.Errorf("camera agent: %w", err)
 	}
 
 	lan.dataLock.Lock()

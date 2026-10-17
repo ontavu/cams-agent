@@ -17,12 +17,13 @@ package lanagent
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"strconv"
 	"strings"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-go-utils/utils"
 	"github.com/ontavu/onvif/v2/networking"
 )
@@ -58,16 +59,16 @@ func validateStaticCameras(cams []CameraConfig) (map[string]bool, error) {
 	uuids := make(map[string]bool, len(cams))
 	for _, cam := range cams {
 		if err := validateStaticCamera(cam); err != nil {
-			return nil, errors.Trace(err)
+			return nil, err
 		}
 		xaddr := canonicalXaddr(cam.Address)
 		if addresses[xaddr] {
-			return nil, errors.Errorf("two cameras at %s", xaddr)
+			return nil, fmt.Errorf("two cameras at %s", xaddr)
 		}
 		addresses[xaddr] = true
 		if cam.UUID != "" {
 			if uuids[cam.UUID] {
-				return nil, errors.Errorf("two cameras with uuid %q", cam.UUID)
+				return nil, fmt.Errorf("two cameras with uuid %q", cam.UUID)
 			}
 			uuids[cam.UUID] = true
 		}
@@ -80,19 +81,19 @@ func validateStaticCamera(cam CameraConfig) error {
 	case cam.Address == "":
 		return errors.New("configured camera without an address")
 	case strings.Contains(cam.Address, "://"), strings.Contains(cam.Address, "/"):
-		return errors.Errorf("camera address %q: want host or host:port, not a URL", cam.Address)
+		return fmt.Errorf("camera address %q: want host or host:port, not a URL", cam.Address)
 	case strings.ContainsAny(cam.UUID, " \t\r\n"):
 		// A LIST reply separates identifiers with spaces.
-		return errors.Errorf("camera uuid %q contains a blank", cam.UUID)
+		return fmt.Errorf("camera uuid %q contains a blank", cam.UUID)
 	}
 
 	u, err := url.Parse("http://" + cam.Address + "/onvif/device_service")
 	if err != nil || u.Host != cam.Address || u.Hostname() == "" || strings.HasSuffix(cam.Address, ":") {
-		return errors.Errorf("camera address %q: want host or host:port, with an IPv6 address in brackets", cam.Address)
+		return fmt.Errorf("camera address %q: want host or host:port, with an IPv6 address in brackets", cam.Address)
 	}
 	if port := u.Port(); port != "" {
 		if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
-			return errors.Errorf("camera address %q: port %q is not a port", cam.Address, port)
+			return fmt.Errorf("camera address %q: port %q is not a port", cam.Address, port)
 		}
 	}
 	return nil
