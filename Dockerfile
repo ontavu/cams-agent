@@ -30,9 +30,10 @@ COPY . .
 
 # CGO_ENABLED=0 because nothing here imports "C": the binaries come out static,
 # so the runtime stage needs no Go runtime, no libc matching and no toolchain.
-# -buildvcs=false because .dockerignore keeps .git out of the context, and
-# stamping a revision that is not there is a build failure rather than a
-# missing label.
+# -buildvcs=false says what the context already guarantees: .dockerignore keeps
+# .git out, so there is no revision to stamp. Without the flag the build works
+# all the same; with it, a .git that reached the context could not change the
+# binaries, nor fail the build on a repository git refuses to read.
 RUN CGO_ENABLED=0 GOFLAGS=-buildvcs=false go build -trimpath -o /out/ ./bin/...
 
 #----------------------------------------------------------------------------#

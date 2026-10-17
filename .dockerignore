@@ -7,3 +7,9 @@
 *.test
 *.out
 *.prof
+
+# A workspace names modules outside the context, and go refuses to build in
+# one whose modules it cannot find. The image builds against the tagged
+# versions go.mod requires, as ci/check.sh does with GOWORK=off.
+go.work
+go.work.sum
