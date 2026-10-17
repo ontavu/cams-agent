@@ -23,10 +23,12 @@
 package upctrl
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/agentbus"
+	"github.com/ontavu/cams-agent/errkind"
 )
 
 // Command is a request sent to the upstream agent.
@@ -69,7 +71,7 @@ func ParseCommand(verb string) (Command, error) {
 	case "":
 		return "", errors.New("empty command")
 	default:
-		return "", errors.NotSupportedf("command %q", verb)
+		return "", fmt.Errorf("command %q %w", verb, errkind.ErrNotSupported)
 	}
 }
 
@@ -79,7 +81,7 @@ func ParseState(token string) (State, error) {
 	case StateDown, StateUp:
 		return st, nil
 	default:
-		return "", errors.NotValidf("state %q", token)
+		return "", fmt.Errorf("state %q %w", token, errkind.ErrNotValid)
 	}
 }
 
@@ -127,26 +129,26 @@ func New(connectURL string, opts ...Option) (*Client, error) {
 
 	bus, err := agentbus.Dial("upstream", connectURL, agentbus.WithTimeout(cfg.timeout))
 	if err != nil {
-		return nil, errors.Trace(err)
+		return nil, err
 	}
 	return &Client{bus: bus}, nil
 }
 
 // Close releases the socket.
-func (c *Client) Close() error { return errors.Trace(c.bus.Close()) }
+func (c *Client) Close() error { return c.bus.Close() }
 
 // Ping checks that the agent is answering.
 func (c *Client) Ping() error {
 	_, err := c.bus.Do(string(CommandPing), "")
-	return errors.Trace(err)
+	return err
 }
 
 // State reports whether the link to the hub is up.
 func (c *Client) State() (State, error) {
 	arg, err := c.bus.Do(string(CommandState), "")
 	if err != nil {
-		return "", errors.Trace(err)
+		return "", err
 	}
 	st, err := ParseState(arg)
-	return st, errors.Trace(err)
+	return st, err
 }

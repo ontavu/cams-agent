@@ -19,8 +19,6 @@ package lan
 
 import (
 	"net"
-
-	"github.com/juju/errors"
 )
 
 // DiscoverSystemNics returns the names of the host's network interfaces, all
@@ -29,7 +27,7 @@ func DiscoverSystemNics() ([]string, error) {
 	var out []string
 	itfs, err := net.Interfaces()
 	if err != nil {
-		return nil, errors.Trace(err)
+		return nil, err
 	}
 	for _, itf := range itfs {
 		out = append(out, itf.Name)

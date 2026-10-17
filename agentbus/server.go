@@ -17,8 +17,9 @@ package agentbus
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-go-utils/utils"
 	"github.com/ontavu/go-swarm"
 	"github.com/rs/zerolog"
@@ -58,7 +59,7 @@ type Server struct {
 func Listen(name, bindURL string) (*Server, error) {
 	sock, err := rep.NewSocket()
 	if err != nil {
-		return nil, errors.Annotate(err, "rep socket")
+		return nil, fmt.Errorf("rep socket: %w", err)
 	}
 
 	// Without a send deadline, a reply to a peer whose queue is full blocks
@@ -66,12 +67,12 @@ func Listen(name, bindURL string) (*Server, error) {
 	// waiting -- so one wedged caller would stop the agent answering anybody.
 	if err := sock.SetOption(mangos.OptionSendDeadline, DefaultTimeout); err != nil {
 		_ = sock.Close()
-		return nil, errors.Annotate(err, "set send deadline")
+		return nil, fmt.Errorf("set send deadline: %w", err)
 	}
 
 	if err := sock.Listen(bindURL); err != nil {
 		_ = sock.Close()
-		return nil, errors.Annotatef(err, "listen %s", bindURL)
+		return nil, fmt.Errorf("listen %s: %w", bindURL, err)
 	}
 	return &Server{name: name, sock: sock}, nil
 }
@@ -81,7 +82,7 @@ func Listen(name, bindURL string) (*Server, error) {
 // give up before starting; calling it twice is harmless.
 func (s *Server) Close() error {
 	if err := s.sock.Close(); err != nil && !errors.Is(err, mangos.ErrClosed) {
-		return errors.Trace(err)
+		return err
 	}
 	return nil
 }

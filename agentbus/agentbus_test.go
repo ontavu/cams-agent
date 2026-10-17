@@ -17,6 +17,7 @@ package agentbus_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -24,8 +25,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/agentbus"
+	"github.com/ontavu/cams-agent/errkind"
 	"go.nanomsg.org/mangos/v3"
 )
 
@@ -95,10 +96,10 @@ func TestDecodeReply_Error(t *testing.T) {
 	}
 }
 
-// TestEncodeErr_SingleLine matters because a reply is read back as one line: an
-// annotation chain from juju/errors contains newlines and would be truncated.
+// TestEncodeErr_SingleLine matters because a reply is read back as one line: a
+// message that holds newlines, or wraps one that does, would be truncated.
 func TestEncodeErr_SingleLine(t *testing.T) {
-	err := errors.Annotate(errors.New("inner\nsecond line"), "outer")
+	err := fmt.Errorf("outer: %w", errors.New("inner\nsecond line"))
 
 	payload := agentbus.EncodeErr(err)
 	if strings.ContainsAny(string(payload), "\n\r") {
@@ -119,8 +120,14 @@ func TestEncodeErr_NilStillFails(t *testing.T) {
 // not pass for a successful one carrying a zero value.
 func TestDecodeReply_Malformed(t *testing.T) {
 	for _, payload := range []string{"", "   ", "MAYBE", "ok", "OKAY fine", "PLAY"} {
-		if got, err := agentbus.DecodeReply([]byte(payload)); err == nil {
+		got, err := agentbus.DecodeReply([]byte(payload))
+		if err == nil {
 			t.Fatalf("DecodeReply(%q) = %q, want an error", payload, got)
+		}
+		// A reply nobody can read is the client's to classify, unlike one the
+		// agent sent back on purpose.
+		if !errors.Is(err, errkind.ErrNotValid) || errors.Is(err, agentbus.ErrRemote) {
+			t.Fatalf("DecodeReply(%q): %v, want ErrNotValid and not ErrRemote", payload, err)
 		}
 	}
 }
@@ -142,7 +149,7 @@ func echo(_ context.Context, verb, arg string) ([]byte, bool) {
 	case "FAIL":
 		return agentbus.EncodeErr(errors.New("as requested")), false
 	default:
-		return agentbus.EncodeErr(errors.NotSupportedf("verb %q", verb)), false
+		return agentbus.EncodeErr(fmt.Errorf("verb %q %w", verb, errkind.ErrNotSupported)), false
 	}
 }
 

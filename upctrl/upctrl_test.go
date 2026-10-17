@@ -16,10 +16,10 @@
 package upctrl
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/agentbus"
 )
 

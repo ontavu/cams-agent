@@ -17,13 +17,13 @@ package transport
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"sync"
 	"time"
 
-	"github.com/juju/errors"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -86,13 +86,13 @@ func (ul *rawUdpListener) OpenRandom(addr string) error {
 	var err error
 	ul.media, err = openPort(addr, 0)
 	if err != nil {
-		return errors.Trace(err)
+		return err
 	}
 
 	ul.control, err = openPort(addr, 0)
 	if err != nil {
 		ul.media.Close()
-		return errors.Trace(err)
+		return err
 	}
 
 	return nil
@@ -113,7 +113,7 @@ func (ul *rawUdpListener) OpenPair(addr string) error {
 	for port := 0; ; port++ {
 		ul.media, err = openPort(addr, port)
 		if err != nil {
-			return errors.Trace(err)
+			return err
 		}
 		if port == 0 {
 			port = getPort(ul.media)
@@ -152,7 +152,7 @@ func (ul *rawUdpListener) Close() error {
 
 func (ul *rawUdpListener) Run(ctx context.Context) error {
 	if err := ul.acquire(); err != nil {
-		return errors.Trace(err)
+		return err
 	}
 	defer ul.release()
 
@@ -167,7 +167,7 @@ func (ul *rawUdpListener) Run(ctx context.Context) error {
 				if err, ok := err.(net.Error); ok && err.Timeout() {
 					continue
 				}
-				return errors.Trace(err)
+				return err
 			} else {
 				out <- buf[:n]
 				buf = getBuffer()
@@ -212,7 +212,7 @@ func (ul *rawUdpListener) release() {
 
 func openPort(addr string, port int) (net.PacketConn, error) {
 	cnx, err := net.ListenPacket("udp", fmt.Sprintf("%s:%d", addr, port))
-	return cnx, errors.Trace(err)
+	return cnx, err
 }
 
 func getPort(cnx net.PacketConn) int {

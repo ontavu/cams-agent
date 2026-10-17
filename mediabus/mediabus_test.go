@@ -18,13 +18,13 @@ package mediabus_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/mediabus"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/push"
@@ -112,14 +112,14 @@ func TestFrameType_Valid(t *testing.T) {
 }
 
 func TestIsOverflow(t *testing.T) {
-	if !mediabus.IsOverflow(errors.Annotate(mangos.ErrSendTimeout, "push RTP")) {
+	if !mediabus.IsOverflow(fmt.Errorf("push RTP: %w", mangos.ErrSendTimeout)) {
 		t.Fatal("an annotated send timeout is not recognised as an overflow")
 	}
 	for _, err := range []error{
 		nil,
 		errors.New("something else"),
-		errors.Annotate(mangos.ErrClosed, "push RTP"),
-		errors.Annotate(mangos.ErrNoPeers, "push RTP"),
+		fmt.Errorf("push RTP: %w", mangos.ErrClosed),
+		fmt.Errorf("push RTP: %w", mangos.ErrNoPeers),
 	} {
 		if mediabus.IsOverflow(err) {
 			t.Fatalf("%v mistaken for an overflow", err)
@@ -554,15 +554,15 @@ func TestServe_SurvivesAMalformedFrame(t *testing.T) {
 func rawPusher(url string) (mangos.Socket, error) {
 	sock, err := push.NewSocket()
 	if err != nil {
-		return nil, errors.Trace(err)
+		return nil, err
 	}
 	if err := sock.SetOption(mangos.OptionSendDeadline, 2*time.Second); err != nil {
 		_ = sock.Close()
-		return nil, errors.Trace(err)
+		return nil, err
 	}
 	if err := sock.Dial(url); err != nil {
 		_ = sock.Close()
-		return nil, errors.Trace(err)
+		return nil, err
 	}
 	return sock, nil
 }

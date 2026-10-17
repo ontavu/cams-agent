@@ -16,10 +16,23 @@
 package camctrl
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/ontavu/cams-agent/agentbus"
+	"github.com/ontavu/cams-agent/errkind"
 )
+
+// An unknown verb is refused as one, so that a dispatcher can tell it from a
+// command that failed. An empty one is a malformed request, not an unknown
+// verb, and has no kind.
+func TestParseCommand_UnknownIsNotSupported(t *testing.T) {
+	for _, verb := range []string{"BOGUS", "play", "LIST"} {
+		if _, err := ParseCommand(verb); !errors.Is(err, errkind.ErrNotSupported) {
+			t.Fatalf("ParseCommand(%q): %v, want ErrNotSupported", verb, err)
+		}
+	}
+}
 
 func TestParseCommand_RoundTrip(t *testing.T) {
 	for _, cmd := range []Command{

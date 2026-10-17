@@ -17,8 +17,9 @@ package mediabus
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-go-utils/utils"
 	"github.com/ontavu/go-swarm"
 	"github.com/rs/zerolog"
@@ -63,15 +64,15 @@ type Puller struct {
 func ListenPull(name, bindURL string) (*Puller, error) {
 	sock, err := pull.NewSocket()
 	if err != nil {
-		return nil, errors.Annotate(err, "pull socket")
+		return nil, fmt.Errorf("pull socket: %w", err)
 	}
 	if err := sock.SetOption(mangos.OptionReadQLen, DefaultReceiveDepth); err != nil {
 		_ = sock.Close()
-		return nil, errors.Annotate(err, "set read queue")
+		return nil, fmt.Errorf("set read queue: %w", err)
 	}
 	if err := sock.Listen(bindURL); err != nil {
 		_ = sock.Close()
-		return nil, errors.Annotatef(err, "listen %s", bindURL)
+		return nil, fmt.Errorf("listen %s: %w", bindURL, err)
 	}
 	return &Puller{name: name, sock: sock}, nil
 }
@@ -81,7 +82,7 @@ func ListenPull(name, bindURL string) (*Puller, error) {
 // before starting; calling it twice is harmless.
 func (p *Puller) Close() error {
 	if err := p.sock.Close(); err != nil && !errors.Is(err, mangos.ErrClosed) {
-		return errors.Trace(err)
+		return err
 	}
 	return nil
 }

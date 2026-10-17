@@ -16,11 +16,12 @@
 package lanctrl
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/agentbus"
+	"github.com/ontavu/cams-agent/errkind"
 )
 
 func TestParseCommand_RoundTrip(t *testing.T) {
@@ -43,8 +44,13 @@ func TestParseCommand_Rejected(t *testing.T) {
 	// EXIT is deliberately not part of the vocabulary: the LAN agent lives as
 	// long as the process.
 	for _, verb := range []string{"", "list", "LISTS", "EXIT", "STATE", "OK"} {
-		if got, err := ParseCommand(verb); err == nil {
+		got, err := ParseCommand(verb)
+		if err == nil {
 			t.Fatalf("ParseCommand(%q) = %q, want an error", verb, string(got))
+		}
+		// An empty verb is a malformed request rather than an unknown one.
+		if verb != "" && !errors.Is(err, errkind.ErrNotSupported) {
+			t.Fatalf("ParseCommand(%q): %v, want ErrNotSupported", verb, err)
 		}
 	}
 }

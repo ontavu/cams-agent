@@ -27,7 +27,10 @@
 package mediabus
 
 import (
-	"github.com/juju/errors"
+	"errors"
+	"fmt"
+
+	"github.com/ontavu/cams-agent/errkind"
 	"go.nanomsg.org/mangos/v3"
 )
 
@@ -112,11 +115,11 @@ const frameHeaderLen = 2
 // message has to copy it.
 func DecodeFrame(msg []byte) (Frame, error) {
 	if len(msg) < frameHeaderLen {
-		return Frame{}, errors.NotValidf("media frame of %d bytes", len(msg))
+		return Frame{}, fmt.Errorf("media frame of %d bytes %w", len(msg), errkind.ErrNotValid)
 	}
 	t := FrameType(msg[0])
 	if !t.Valid() {
-		return Frame{}, errors.NotValidf("media frame type %d", msg[0])
+		return Frame{}, fmt.Errorf("media frame type %d %w", msg[0], errkind.ErrNotValid)
 	}
 	return Frame{Type: t, Track: msg[1], Payload: msg[frameHeaderLen:]}, nil
 }

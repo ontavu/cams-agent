@@ -23,12 +23,14 @@
 package lanctrl
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/agentbus"
 	"github.com/ontavu/cams-agent/camctrl"
+	"github.com/ontavu/cams-agent/errkind"
 )
 
 // Command is a request sent to the LAN agent.
@@ -65,7 +67,7 @@ func ParseCommand(verb string) (Command, error) {
 	case "":
 		return "", errors.New("empty command")
 	default:
-		return "", errors.NotSupportedf("command %q", verb)
+		return "", fmt.Errorf("command %q %w", verb, errkind.ErrNotSupported)
 	}
 }
 
@@ -142,19 +144,19 @@ func New(connectURL string, opts ...Option) (*Client, error) {
 
 	bus, err := agentbus.Dial("lan", connectURL, agentbus.WithTimeout(cfg.timeout))
 	if err != nil {
-		return nil, errors.Trace(err)
+		return nil, err
 	}
 	return &Client{bus: bus}, nil
 }
 
 // Close releases the socket.
-func (c *Client) Close() error { return errors.Trace(c.bus.Close()) }
+func (c *Client) Close() error { return c.bus.Close() }
 
 // List returns the identifiers of the cameras the agent knows about.
 func (c *Client) List() ([]string, error) {
 	arg, err := c.bus.Do(string(CommandList), "")
 	if err != nil {
-		return nil, errors.Trace(err)
+		return nil, err
 	}
 	return DecodeIDs(arg), nil
 }
@@ -162,13 +164,13 @@ func (c *Client) List() ([]string, error) {
 // Play asks the agent to have one camera stream upstream.
 func (c *Client) Play(camID string) error {
 	_, err := c.bus.Do(string(CommandPlay), camID)
-	return errors.Trace(err)
+	return err
 }
 
 // Pause asks the agent to have one camera stop streaming.
 func (c *Client) Pause(camID string) error {
 	_, err := c.bus.Do(string(CommandPause), camID)
-	return errors.Trace(err)
+	return err
 }
 
 // Media reports what one camera was last seen producing.
@@ -178,14 +180,14 @@ func (c *Client) Pause(camID string) error {
 func (c *Client) Media(camID string) (camctrl.Media, error) {
 	arg, err := c.bus.Do(string(CommandMedia), camID)
 	if err != nil {
-		return camctrl.Media{}, errors.Trace(err)
+		return camctrl.Media{}, err
 	}
 	m, err := camctrl.DecodeMedia(arg)
-	return m, errors.Trace(err)
+	return m, err
 }
 
 // Ping checks that the agent is answering.
 func (c *Client) Ping() error {
 	_, err := c.bus.Do(string(CommandPing), "")
-	return errors.Trace(err)
+	return err
 }

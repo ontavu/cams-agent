@@ -36,9 +36,11 @@
 package agentbus
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 
-	"github.com/juju/errors"
+	"github.com/ontavu/cams-agent/errkind"
 )
 
 // The two leading tokens of a reply.
@@ -95,8 +97,8 @@ func EncodeErr(err error) []byte {
 	if err == nil {
 		return []byte(replyErr + " unspecified error")
 	}
-	// The message travels on one line: an annotation chain from juju/errors
-	// contains newlines, and would be read back as a truncated reply.
+	// The message travels on one line: a message may hold newlines, its own or
+	// those of an error it wraps, and would be read back as a truncated reply.
 	msg := strings.Join(strings.Fields(err.Error()), " ")
 	if msg == "" {
 		msg = "unspecified error"
@@ -123,8 +125,8 @@ func DecodeReply(payload []byte) (string, error) {
 		if arg == "" {
 			arg = "unspecified error"
 		}
-		return "", errors.Annotate(ErrRemote, arg)
+		return "", fmt.Errorf("%s: %w", arg, ErrRemote)
 	default:
-		return "", errors.NotValidf("reply %q", string(payload))
+		return "", fmt.Errorf("reply %q %w", string(payload), errkind.ErrNotValid)
 	}
 }

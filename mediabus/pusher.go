@@ -16,9 +16,10 @@
 package mediabus
 
 import (
+	"fmt"
 	"time"
 
-	"github.com/juju/errors"
+	"github.com/ontavu/cams-agent/errkind"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/push"
 
@@ -93,7 +94,7 @@ func DialPush(name, connectURL string, opts ...Option) (*Pusher, error) {
 
 	sock, err := push.NewSocket()
 	if err != nil {
-		return nil, errors.Annotate(err, "push socket")
+		return nil, fmt.Errorf("push socket: %w", err)
 	}
 
 	// Every option is set before the dial, and none afterwards. Changing the
@@ -123,13 +124,13 @@ func DialPush(name, connectURL string, opts ...Option) (*Pusher, error) {
 	for _, opt := range options {
 		if err := sock.SetOption(opt.name, opt.value); err != nil {
 			_ = sock.Close()
-			return nil, errors.Annotatef(err, "set %s", opt.name)
+			return nil, fmt.Errorf("set %s: %w", opt.name, err)
 		}
 	}
 
 	if err := sock.Dial(connectURL); err != nil {
 		_ = sock.Close()
-		return nil, errors.Annotatef(err, "dial %s", connectURL)
+		return nil, fmt.Errorf("dial %s: %w", connectURL, err)
 	}
 
 	return &Pusher{name: name, sock: sock}, nil
@@ -142,7 +143,7 @@ func DialPush(name, connectURL string, opts ...Option) (*Pusher, error) {
 // stream that is ending is worth less than a prompt teardown -- but it does
 // mean the last frames of an attempt may never arrive.
 func (p *Pusher) Close() error {
-	return errors.Trace(p.sock.Close())
+	return p.sock.Close()
 }
 
 // Send hands one frame to the upstream. track names the media the payload
@@ -152,7 +153,7 @@ func (p *Pusher) Close() error {
 // error for which IsOverflow is true. Anything else means the link is done.
 func (p *Pusher) Send(t FrameType, track byte, payload []byte) error {
 	if !t.Valid() {
-		return errors.NotValidf("media frame type %d", byte(t))
+		return fmt.Errorf("media frame type %d %w", byte(t), errkind.ErrNotValid)
 	}
 
 	// One pooled message, filled in place: the alternative, Send([]byte),
@@ -165,7 +166,7 @@ func (p *Pusher) Send(t FrameType, track byte, payload []byte) error {
 		// On a failure the message is still ours, so it goes back to the pool.
 		// On success it belongs to mangos and must not be touched.
 		msg.Free()
-		return errors.Annotatef(err, "push %s", t)
+		return fmt.Errorf("push %s: %w", t, err)
 	}
 	return nil
 }

@@ -24,13 +24,14 @@
 package camctrl
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/agentbus"
+	"github.com/ontavu/cams-agent/errkind"
 )
 
 // Command is a request sent to a camera agent.
@@ -112,7 +113,7 @@ func ParseCommand(verb string) (Command, error) {
 	case "":
 		return "", errors.New("empty command")
 	default:
-		return "", errors.NotSupportedf("command %q", verb)
+		return "", fmt.Errorf("command %q %w", verb, errkind.ErrNotSupported)
 	}
 }
 
@@ -122,7 +123,7 @@ func ParseState(token string) (State, error) {
 	case StateOff, StateIdle, StatePlaying, StatePausing, StateResuming:
 		return st, nil
 	default:
-		return "", errors.NotValidf("state %q", token)
+		return "", fmt.Errorf("state %q %w", token, errkind.ErrNotValid)
 	}
 }
 
@@ -196,17 +197,17 @@ func EncodeMedia(m Media) string {
 func DecodeMedia(arg string) (Media, error) {
 	fields := strings.Fields(arg)
 	if len(fields) < 4 {
-		return Media{}, errors.NotValidf("media reply %q", arg)
+		return Media{}, fmt.Errorf("media reply %q %w", arg, errkind.ErrNotValid)
 	}
 
 	out := Media{Encoding: ParseEncoding(fields[0])}
 	for i, into := range []*int{&out.Width, &out.Height, &out.GopLength} {
 		n, err := strconv.Atoi(fields[i+1])
 		if err != nil {
-			return Media{}, errors.NotValidf("media reply %q", arg)
+			return Media{}, fmt.Errorf("media reply %q %w", arg, errkind.ErrNotValid)
 		}
 		if n < 0 {
-			return Media{}, errors.NotValidf("media reply %q", arg)
+			return Media{}, fmt.Errorf("media reply %q %w", arg, errkind.ErrNotValid)
 		}
 		*into = n
 	}
@@ -242,30 +243,30 @@ func New(id, connectURL string, opts ...Option) (*Client, error) {
 
 	bus, err := agentbus.Dial("cam "+id, connectURL, agentbus.WithTimeout(cfg.timeout))
 	if err != nil {
-		return nil, errors.Trace(err)
+		return nil, err
 	}
 	return &Client{id: id, bus: bus}, nil
 }
 
 // Close releases the socket.
-func (c *Client) Close() error { return errors.Trace(c.bus.Close()) }
+func (c *Client) Close() error { return c.bus.Close() }
 
 // Play asks the agent to stream its media upstream.
 func (c *Client) Play() error {
 	_, err := c.bus.Do(string(CommandPlay), "")
-	return errors.Trace(err)
+	return err
 }
 
 // Pause asks the agent to stop streaming, keeping the agent alive.
 func (c *Client) Pause() error {
 	_, err := c.bus.Do(string(CommandPause), "")
-	return errors.Trace(err)
+	return err
 }
 
 // Ping lets the agent advance the transient states of its state machine.
 func (c *Client) Ping() error {
 	_, err := c.bus.Do(string(CommandPing), "")
-	return errors.Trace(err)
+	return err
 }
 
 // Exit asks the agent to stop for good. Run returns shortly afterwards.
@@ -275,25 +276,25 @@ func (c *Client) Ping() error {
 // agentbus.Client.DoTolerateGone.
 func (c *Client) Exit() error {
 	_, err := c.bus.DoTolerateGone(string(CommandExit), "")
-	return errors.Trace(err)
+	return err
 }
 
 // Media reports what the agent last set up, or the zero value if it never has.
 func (c *Client) Media() (Media, error) {
 	arg, err := c.bus.Do(string(CommandMedia), "")
 	if err != nil {
-		return Media{}, errors.Trace(err)
+		return Media{}, err
 	}
 	m, err := DecodeMedia(arg)
-	return m, errors.Trace(err)
+	return m, err
 }
 
 // State reports what the agent is currently doing.
 func (c *Client) State() (State, error) {
 	arg, err := c.bus.Do(string(CommandState), "")
 	if err != nil {
-		return "", errors.Trace(err)
+		return "", err
 	}
 	st, err := ParseState(arg)
-	return st, errors.Trace(err)
+	return st, err
 }

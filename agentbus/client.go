@@ -16,9 +16,10 @@
 package agentbus
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-go-utils/utils"
 	"go.nanomsg.org/mangos/v3"
 	"go.nanomsg.org/mangos/v3/protocol/req"
@@ -69,7 +70,7 @@ func Dial(name, connectURL string, opts ...Option) (*Client, error) {
 
 	sock, err := req.NewSocket()
 	if err != nil {
-		return nil, errors.Annotate(err, "req socket")
+		return nil, fmt.Errorf("req socket: %w", err)
 	}
 
 	// Every option has to be set before the first OpenContext: a context copies
@@ -96,13 +97,13 @@ func Dial(name, connectURL string, opts ...Option) (*Client, error) {
 	for _, opt := range options {
 		if err := sock.SetOption(opt.name, opt.value); err != nil {
 			_ = sock.Close()
-			return nil, errors.Annotatef(err, "set %s", opt.name)
+			return nil, fmt.Errorf("set %s: %w", opt.name, err)
 		}
 	}
 
 	if err := sock.Dial(connectURL); err != nil {
 		_ = sock.Close()
-		return nil, errors.Annotatef(err, "dial %s", connectURL)
+		return nil, fmt.Errorf("dial %s: %w", connectURL, err)
 	}
 
 	return &Client{name: name, sock: sock}, nil
@@ -118,7 +119,7 @@ func (c *Client) Name() string { return c.name }
 // That is fine for a command socket, where a reply is awaited before the next
 // request, and it means teardown is prompt.
 func (c *Client) Close() error {
-	return errors.Trace(c.sock.Close())
+	return c.sock.Close()
 }
 
 // Do performs one request/reply exchange and returns the argument of the reply.
@@ -130,7 +131,7 @@ func (c *Client) Close() error {
 func (c *Client) Do(verb, arg string) (string, error) {
 	ctx, err := c.sock.OpenContext()
 	if err != nil {
-		return "", errors.Annotate(err, "open context")
+		return "", fmt.Errorf("open context: %w", err)
 	}
 	defer func() {
 		if cerr := ctx.Close(); cerr != nil {
@@ -141,16 +142,21 @@ func (c *Client) Do(verb, arg string) (string, error) {
 	}()
 
 	if err := ctx.Send(EncodeRequest(verb, arg)); err != nil {
-		return "", errors.Annotatef(err, "send %s", verb)
+		return "", fmt.Errorf("send %s: %w", verb, err)
 	}
 
 	reply, err := ctx.Recv()
 	if err != nil {
-		return "", errors.Annotatef(err, "recv %s", verb)
+		return "", fmt.Errorf("recv %s: %w", verb, err)
 	}
 
+	// Guarded: a successful reply has a nil error, and wrapping nil with %w
+	// makes an error of it, which would fail every exchange that worked.
 	out, err := DecodeReply(reply)
-	return out, errors.Annotatef(err, "reply to %s", verb)
+	if err != nil {
+		return out, fmt.Errorf("reply to %s: %w", verb, err)
+	}
+	return out, nil
 }
 
 // DoTolerateGone is Do for a command whose effect is that the agent stops.
@@ -167,5 +173,5 @@ func (c *Client) DoTolerateGone(verb, arg string) (string, error) {
 	if errors.Is(err, mangos.ErrCanceled) || errors.Is(err, mangos.ErrNoPeers) {
 		return "", nil
 	}
-	return out, errors.Trace(err)
+	return out, err
 }
