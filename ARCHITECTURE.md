@@ -138,6 +138,7 @@ flowchart LR
 | `lanagent/` | The agent managing the LAN: NIC discovery, the camera registry, the camera lifecycles. Imported only by `main`. |
 | `lanctrl/` | The controller of the LAN agent, and the vocabulary they exchange. |
 | `lan/` | The host's network interfaces, as the system reports them. |
+| `errkind/` | The kinds of failure a caller may branch on, as sentinels to wrap with `%w`. Imports nothing of this module. |
 | `upagent/` | The agent holding the link to the hub: registrations out, `Play`/`Stop` in. Imported only by `main`. |
 | `upctrl/` | The controller of the upstream agent: `PING` and `STATE`, nothing more. |
 | `transport/` | A raw UDP socket pair. Unused since the move to gortsplib v5. |

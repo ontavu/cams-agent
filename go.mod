@@ -5,7 +5,6 @@ go 1.26.7
 require (
 	github.com/bluenviron/gortsplib/v5 v5.6.4
 	github.com/jfsmig/go-bags v0.3.0
-	github.com/juju/errors v1.0.0
 	github.com/ontavu/cams-api v1.0.0
 	github.com/ontavu/cams-go-utils v0.4.0
 	github.com/ontavu/go-swarm v0.1.0

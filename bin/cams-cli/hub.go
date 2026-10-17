@@ -17,8 +17,8 @@ package main
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-api/pb"
 	"github.com/ontavu/cams-api/wire"
 	"github.com/ontavu/cams-go-utils/utils"
@@ -27,7 +27,7 @@ import (
 func hubPlay(ctx context.Context, address, userID, streamID string) error {
 	cnx, err := utils.DialInsecure(ctx, address, wire.DialOptions()...)
 	if err != nil {
-		return errors.Annotate(err, "dial")
+		return fmt.Errorf("dial: %w", err)
 	}
 	defer cnx.Close()
 

@@ -58,6 +58,13 @@ done
 [ -z "$violations" ] || die "an agent package is imported outside main:
 $violations"
 
+# Errors are the standard library's, wrapped with %w; see AGENTS.md. Nothing
+# may link juju/errors again, directly or through a dependency, tests included.
+log "no juju/errors"
+if go list -deps -test ./... | grep -qx 'github.com/juju/errors'; then
+    die "github.com/juju/errors is linked again: wrap with fmt.Errorf and %w"
+fi
+
 # -race because the whole design is concurrent: three agent kinds, a message
 # bus and a media path. A run without it proves very little here.
 log "go test -race"

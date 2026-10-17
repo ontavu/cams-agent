@@ -16,6 +16,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -110,5 +112,49 @@ func TestConfig_UpstreamLeavesZeroAlone(t *testing.T) {
 	got := cfg.upstream()
 	if got.RegisterPeriod != 0 {
 		t.Fatalf("an unset period was mapped to %v, want zero", got.RegisterPeriod)
+	}
+}
+
+// recordingUpload is the client half of an upload stream, as far as onFrame
+// uses it: Send. The embedded interface stays nil.
+type recordingUpload struct {
+	pb.Uploader_MediaUploadClient
+	sent []*pb.DownstreamMediaFrame
+	err  error
+}
+
+func (u *recordingUpload) Send(f *pb.DownstreamMediaFrame) error {
+	u.sent = append(u.sent, f)
+	return u.err
+}
+
+// Every frame of a stream goes through onFrame, so a successful Send has to
+// come back as nil: wrapped with %w, it would be an error, and the upload
+// would end on its first packet. A failed one comes back wrapped.
+func TestOnFrame_ReportsOnlyAFailedSend(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		sendErr error
+	}{
+		{"sent", nil},
+		{"refused", errors.New("stream reset")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upload := &recordingUpload{err: tc.sendErr}
+			sink := &grpcMediaSink{upload: upload}
+
+			err := sink.onFrame(context.Background(),
+				mediabus.Frame{Type: mediabus.FrameRTP, Track: 1, Payload: []byte{0x80}})
+
+			if tc.sendErr == nil && err != nil {
+				t.Fatalf("onFrame: %v after a successful send", err)
+			}
+			if tc.sendErr != nil && !errors.Is(err, tc.sendErr) {
+				t.Fatalf("onFrame: %v, want the send's own error wrapped", err)
+			}
+			if len(upload.sent) != 1 {
+				t.Fatalf("%d frames sent, want one", len(upload.sent))
+			}
+		})
 	}
 }

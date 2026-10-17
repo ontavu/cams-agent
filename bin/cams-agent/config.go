@@ -18,12 +18,12 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/lanagent"
 	"github.com/ontavu/cams-agent/upagent"
 )
@@ -110,11 +110,11 @@ func DefaultConfig() AgentConfig {
 
 func (cfg *AgentConfig) LoadFile(path string) error {
 	if fin, err := os.Open(path); err != nil {
-		return errors.Annotate(err, "open")
+		return fmt.Errorf("open: %w", err)
 	} else {
 		defer fin.Close()
 		if encoded, err := ioutil.ReadAll(fin); err != nil {
-			return errors.Annotate(err, "read")
+			return fmt.Errorf("read: %w", err)
 		} else {
 			return cfg.LoadBytes(encoded)
 		}
@@ -123,14 +123,14 @@ func (cfg *AgentConfig) LoadFile(path string) error {
 
 func (cfg *AgentConfig) LoadBytes(encoded []byte) error {
 	if err := json.NewDecoder(bytes.NewReader(encoded)).Decode(cfg); err != nil {
-		return errors.Annotate(err, "decode")
+		return fmt.Errorf("decode: %w", err)
 	}
 	return nil
 }
 
 func (cfg *AgentConfig) LoadString(encoded string) error {
 	if err := json.NewDecoder(strings.NewReader(encoded)).Decode(cfg); err != nil {
-		return errors.Annotate(err, "decode")
+		return fmt.Errorf("decode: %w", err)
 	}
 	return nil
 }

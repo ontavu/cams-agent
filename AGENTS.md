@@ -133,8 +133,13 @@ New or modified logic ships with its tests, in the same change.
 
 * No `_ = f()`, no empty `if err != nil {}`, no naked `return` that drops an error. When
   an error truly cannot be acted upon, log it and leave a comment saying why.
-* Add context on the way up with `errors.Annotate(err, "describe")` from
-  `github.com/juju/errors`, the convention throughout the Go modules.
+* Add context on the way up with `fmt.Errorf("describe: %w", err)`, and only under an
+  `if err != nil`: a nil error wrapped with `%w` is a non-nil one, reading
+  `describe: %!w(<nil>)`, and `go vet` does not see it. `%v` in place of `%w` severs
+  `errors.Is`; and a sentinel is compared with `errors.Is`, never with `==`.
+* A failure a caller may branch on wraps one of `errkind`'s sentinels, as in
+  `fmt.Errorf("argument %q %w", arg, errkind.ErrNotValid)`. Only its text crosses a bus.
+* `github.com/juju/errors` is gone from this module, and `ci/check.sh` refuses it back.
 * An error raised inside a goroutine reaches its owner through the group that supervises
   it, not through a log line alone.
 * `go vet ./...` must stay clean; it catches the cheapest half of this class.

@@ -17,10 +17,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"time"
 
-	"github.com/juju/errors"
+	"github.com/ontavu/cams-agent/errkind"
 	"github.com/ontavu/cams-agent/mediabus"
 	"github.com/ontavu/cams-api/pb"
 	"github.com/ontavu/cams-api/wire"
@@ -46,7 +47,7 @@ func frameTypeToPB(t mediabus.FrameType) (pb.DownstreamMediaFrameType, error) {
 		return pb.DownstreamMediaFrameType_DOWNSTREAM_MEDIA_FRAME_TYPE_RTCP, nil
 	default:
 		return pb.DownstreamMediaFrameType_DOWNSTREAM_MEDIA_FRAME_TYPE_UNSPECIFIED,
-			errors.NotValidf("media frame type %d", byte(t))
+			fmt.Errorf("media frame type %d %w", byte(t), errkind.ErrNotValid)
 	}
 }
 
@@ -76,7 +77,7 @@ type grpcMediaSink struct {
 func NewGrpcMediaSink(userID, camID, endpoint, bindURL string) (*grpcMediaSink, error) {
 	puller, err := mediabus.ListenPull("cam "+camID, bindURL)
 	if err != nil {
-		return nil, errors.Trace(err)
+		return nil, err
 	}
 	return &grpcMediaSink{
 		puller:   puller,
@@ -88,7 +89,7 @@ func NewGrpcMediaSink(userID, camID, endpoint, bindURL string) (*grpcMediaSink, 
 
 // Close releases the media endpoint of a sink that will never Run.
 func (sink *grpcMediaSink) Close() error {
-	return errors.Trace(sink.puller.Close())
+	return sink.puller.Close()
 }
 
 // Run consumes the media of the camera until the context is cancelled.
@@ -104,7 +105,7 @@ func (sink *grpcMediaSink) onFrame(ctx context.Context, f mediabus.Frame) error 
 		// only sends one after establishing a fresh RTSP session.
 		sink.closeStream()
 		if err := sink.openStream(ctx); err != nil {
-			return errors.Annotate(err, "open upload")
+			return fmt.Errorf("open upload: %w", err)
 		}
 	}
 
@@ -117,7 +118,7 @@ func (sink *grpcMediaSink) onFrame(ctx context.Context, f mediabus.Frame) error 
 
 	kind, err := frameTypeToPB(f.Type)
 	if err != nil {
-		return errors.Trace(err)
+		return err
 	}
 
 	// The payload is only valid until this returns, and marshalling the message
@@ -134,13 +135,18 @@ func (sink *grpcMediaSink) onFrame(ctx context.Context, f mediabus.Frame) error 
 		Track:              uint32(f.Track),
 		ForwardedUnixNanos: time.Now().UnixNano(),
 	}
-	return errors.Annotatef(sink.upload.Send(frame), "upload %s", f.Type)
+	// Guarded: this is every frame's path, and %w would make an error of the
+	// nil a successful Send returns.
+	if err := sink.upload.Send(frame); err != nil {
+		return fmt.Errorf("upload %s: %w", f.Type, err)
+	}
+	return nil
 }
 
 func (sink *grpcMediaSink) openStream(ctx context.Context) error {
 	cnx, err := utils.DialInsecure(ctx, sink.endpoint, wire.DialOptions()...)
 	if err != nil {
-		return errors.Annotate(err, "dial")
+		return fmt.Errorf("dial: %w", err)
 	}
 
 	client := pb.NewUploaderClient(cnx)
@@ -153,7 +159,7 @@ func (sink *grpcMediaSink) openStream(ctx context.Context) error {
 		if cerr := cnx.Close(); cerr != nil {
 			utils.Logger.Warn().Err(cerr).Str("cam", sink.camID).Msg("upload close")
 		}
-		return errors.Annotate(err, "call")
+		return fmt.Errorf("call: %w", err)
 	}
 
 	sink.cnx = cnx

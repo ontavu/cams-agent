@@ -18,6 +18,7 @@ package main
 import (
 	"archive/tar"
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -25,9 +26,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/camagent"
 	"github.com/ontavu/cams-agent/camctrl"
+	"github.com/ontavu/cams-agent/errkind"
 	"github.com/ontavu/cams-agent/lan"
 	"github.com/ontavu/cams-agent/mediabus"
 	"github.com/ontavu/cams-go-utils/utils"
@@ -60,7 +61,7 @@ const (
 func camCredentials() (networking.ClientAuth, error) {
 	password, set := os.LookupEnv(envCamPassword)
 	if !set || password == "" {
-		return networking.ClientAuth{}, errors.Errorf(
+		return networking.ClientAuth{}, fmt.Errorf(
 			"no camera password: set %s (and %s, if the camera's account is not \"admin\")",
 			envCamPassword, envCamUser)
 	}
@@ -85,7 +86,7 @@ func interfacesToProbe(pinned string) ([]string, error) {
 	}
 	itfs, err := lan.DiscoverSystemNics()
 	if err != nil {
-		return nil, errors.Annotate(err, "interfaces")
+		return nil, fmt.Errorf("interfaces: %w", err)
 	}
 	if len(itfs) == 0 {
 		return nil, errors.New("this machine reports no network interface")
@@ -99,12 +100,12 @@ func camPlay(ctx context.Context, addr, pinned string) error {
 	// the wait and reported the second-least useful thing it knows.
 	auth, err := camCredentials()
 	if err != nil {
-		return errors.Trace(err)
+		return err
 	}
 
 	itfs, err := interfacesToProbe(pinned)
 	if err != nil {
-		return errors.Trace(err)
+		return err
 	}
 
 	// FIXME(jfsmig): We currently need a UUID that is only provided by a discovery. it sucks as is.
@@ -128,7 +129,7 @@ func camPlay(ctx context.Context, addr, pinned string) error {
 
 			dev, nerr := sdk.NewDevice(ctx, clientInfo, auth, http.DefaultClient)
 			if nerr != nil {
-				return errors.Annotate(nerr, "OnVif new error")
+				return fmt.Errorf("OnVif new error: %w", nerr)
 			}
 			utils.Logger.Info().
 				Interface("device", clientInfo).Str("interface", itf).
@@ -138,7 +139,7 @@ func camPlay(ctx context.Context, addr, pinned string) error {
 		}
 	}
 
-	return errors.Errorf("no camera at %s on any of %v", addr, itfs)
+	return fmt.Errorf("no camera at %s on any of %v", addr, itfs)
 }
 
 // runOneCamera starts a camera and its media sink and drives the camera
@@ -153,7 +154,7 @@ func runOneCamera(ctx context.Context, dev sdk.Appliance, auth networking.Client
 	// dials it once it has a stream to push.
 	sink, err := NewTarMediaSink(mediaURL)
 	if err != nil {
-		return errors.Annotate(err, "media sink")
+		return fmt.Errorf("media sink: %w", err)
 	}
 
 	// The agent binds its command endpoint here, so the controller below can
@@ -164,7 +165,7 @@ func runOneCamera(ctx context.Context, dev sdk.Appliance, auth networking.Client
 		if cerr := sink.Close(); cerr != nil {
 			utils.Logger.Warn().Err(cerr).Msg("media sink close")
 		}
-		return errors.Annotate(err, "camera agent")
+		return fmt.Errorf("camera agent: %w", err)
 	}
 
 	ctl, err := camctrl.New(camID, busURL)
@@ -175,7 +176,7 @@ func runOneCamera(ctx context.Context, dev sdk.Appliance, auth networking.Client
 		if cerr := sink.Close(); cerr != nil {
 			utils.Logger.Warn().Err(cerr).Msg("media sink close")
 		}
-		return errors.Annotate(err, "camera controller")
+		return fmt.Errorf("camera controller: %w", err)
 	}
 	defer func() {
 		if cerr := ctl.Close(); cerr != nil {
@@ -211,7 +212,7 @@ func runOneCamera(ctx context.Context, dev sdk.Appliance, auth networking.Client
 	}()
 
 	if err := ctl.Play(); err != nil {
-		return errors.Annotate(err, "play")
+		return fmt.Errorf("play: %w", err)
 	}
 	utils.Logger.Info().Str("action", "start").Msg("stream command")
 
@@ -222,7 +223,7 @@ func runOneCamera(ctx context.Context, dev sdk.Appliance, auth networking.Client
 	utils.Logger.Info().Msg("stream ending")
 
 	if err := ctl.Pause(); err != nil {
-		return errors.Annotate(err, "pause")
+		return fmt.Errorf("pause: %w", err)
 	}
 	utils.Logger.Info().Str("action", "stop").Msg("stream command")
 
@@ -246,7 +247,7 @@ type tarMediaSink struct {
 func NewTarMediaSink(bindURL string) (*tarMediaSink, error) {
 	puller, err := mediabus.ListenPull("cli", bindURL)
 	if err != nil {
-		return nil, errors.Trace(err)
+		return nil, err
 	}
 
 	fout, err := ioutil.TempFile("", "cams-capture-*.tar")
@@ -254,7 +255,7 @@ func NewTarMediaSink(bindURL string) (*tarMediaSink, error) {
 		if cerr := puller.Close(); cerr != nil {
 			utils.Logger.Warn().Err(cerr).Msg("media sink close")
 		}
-		return nil, errors.Annotate(err, "mktemp")
+		return nil, fmt.Errorf("mktemp: %w", err)
 	}
 
 	utils.Logger.Info().Str("path", fout.Name()).Msg("capture opened")
@@ -271,7 +272,7 @@ func NewTarMediaSink(bindURL string) (*tarMediaSink, error) {
 func (sink *tarMediaSink) Close() error {
 	err := sink.puller.Close()
 	sink.closeArchive()
-	return errors.Trace(err)
+	return err
 }
 
 // Run consumes the media until the context is cancelled, then closes the
@@ -294,7 +295,7 @@ func (sink *tarMediaSink) onFrame(_ context.Context, f mediabus.Frame) error {
 	case mediabus.FrameRTCP:
 		tag = "rtcp"
 	default:
-		return errors.NotValidf("media frame type %d", byte(f.Type))
+		return fmt.Errorf("media frame type %d %w", byte(f.Type), errkind.ErrNotValid)
 	}
 	return sink.writeFile(fmt.Sprintf("t%d.%s", f.Track, tag), f.Payload)
 }
@@ -335,8 +336,10 @@ func (sink *tarMediaSink) writeFile(tag string, payload []byte) error {
 		Format:     tar.FormatGNU,
 	}
 	if err := sink.archive.WriteHeader(&hdr); err != nil {
-		return errors.Annotate(err, "tar header")
+		return fmt.Errorf("tar header: %w", err)
 	}
-	_, err := sink.archive.Write(payload)
-	return errors.Annotate(err, "tar body")
+	if _, err := sink.archive.Write(payload); err != nil {
+		return fmt.Errorf("tar body: %w", err)
+	}
+	return nil
 }

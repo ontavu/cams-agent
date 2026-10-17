@@ -91,9 +91,11 @@ is least likely to catch it unaided.
 * No `_ = f()`, no empty `if err != nil {}`, no naked return that drops an error. Where
   an error genuinely cannot be acted upon, it is logged **and** carries a comment saying
   why.
-* Context is added on the way up with `errors.Annotate(err, "...")` from
-  `github.com/juju/errors`. An annotated error compared with `==` or `errors.Is` against
-  a sentinel without `errors.Cause` is a silent behaviour change; look for it.
+* Context is added on the way up with `fmt.Errorf("...: %w", err)`. Look for three
+  mistakes: a `%w` on an error that may be nil, which makes a non-nil error that
+  `go vet` does not see; a `%v` where `%w` was meant, which severs `errors.Is`; and a
+  sentinel compared with `==` rather than `errors.Is`. A kind a caller branches on is
+  one of `errkind`'s sentinels.
 * An error raised inside a goroutine reaches its owner through the supervising group,
   not through a log line alone.
 

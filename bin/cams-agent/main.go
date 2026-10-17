@@ -17,10 +17,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os/signal"
 	"syscall"
 
-	"github.com/juju/errors"
 	"github.com/ontavu/cams-agent/camagent"
 	"github.com/ontavu/cams-agent/camctrl"
 	"github.com/ontavu/cams-agent/lanagent"
@@ -106,7 +106,7 @@ func loadConfig(path, user, control, media string) (AgentConfig, error) {
 
 	if path != "" {
 		if err := cfg.LoadFile(path); err != nil {
-			return cfg, errors.Annotatef(err, "config %q", path)
+			return cfg, fmt.Errorf("config %q: %w", path, err)
 		}
 	}
 
@@ -127,7 +127,7 @@ func loadConfig(path, user, control, media string) (AgentConfig, error) {
 	// pointed at one address for both uploads nothing and says nothing about
 	// why.
 	if cfg.UpstreamControl.Address == cfg.UpstreamMedia.Address {
-		return cfg, errors.Errorf(
+		return cfg, fmt.Errorf(
 			"control and media are the same address (%s); they are two processes",
 			cfg.UpstreamControl.Address)
 	}
@@ -167,9 +167,12 @@ func (b *cameraBundle) Close() error {
 	agentErr := b.agent.Close()
 	sinkErr := b.sink.Close()
 	if agentErr != nil {
-		return errors.Annotate(agentErr, "camera agent")
+		return fmt.Errorf("camera agent: %w", agentErr)
 	}
-	return errors.Annotate(sinkErr, "media sink")
+	if sinkErr != nil {
+		return fmt.Errorf("media sink: %w", sinkErr)
+	}
+	return nil
 }
 
 // newCameraFactory is the only place in the process that knows how a camera is
@@ -185,7 +188,7 @@ func newCameraFactory(cfg AgentConfig) lanagent.CameraFactory {
 		// camera dials it once it has a stream to push.
 		sink, err := NewGrpcMediaSink(cfg.User, camID, cfg.UpstreamMedia.Address, mediaURL)
 		if err != nil {
-			return nil, nil, errors.Annotate(err, "media sink")
+			return nil, nil, fmt.Errorf("media sink: %w", err)
 		}
 
 		// The agent binds too, so the controller below can dial right away. The
@@ -197,7 +200,7 @@ func newCameraFactory(cfg AgentConfig) lanagent.CameraFactory {
 			if cerr := sink.Close(); cerr != nil {
 				utils.Logger.Warn().Err(cerr).Str("cam", camID).Msg("media sink close")
 			}
-			return nil, nil, errors.Annotate(err, "camera agent")
+			return nil, nil, fmt.Errorf("camera agent: %w", err)
 		}
 
 		bundle := &cameraBundle{agent: agent, sink: sink}
@@ -207,7 +210,7 @@ func newCameraFactory(cfg AgentConfig) lanagent.CameraFactory {
 			if cerr := bundle.Close(); cerr != nil {
 				utils.Logger.Warn().Err(cerr).Str("cam", camID).Msg("camera close")
 			}
-			return nil, nil, errors.Annotate(err, "camera controller")
+			return nil, nil, fmt.Errorf("camera controller: %w", err)
 		}
 
 		return ctl, bundle, nil
@@ -227,7 +230,7 @@ func runAgent(ctx context.Context, cfg AgentConfig) error {
 	// it before anything is scheduled.
 	lan, err := lanagent.New(cfg.lan(), newCameraFactory(cfg), lanBusURL)
 	if err != nil {
-		return errors.Annotate(err, "lan agent")
+		return fmt.Errorf("lan agent: %w", err)
 	}
 
 	lanCli, err := lanctrl.New(lanBusURL)
@@ -235,7 +238,7 @@ func runAgent(ctx context.Context, cfg AgentConfig) error {
 		if cerr := lan.Close(); cerr != nil {
 			utils.Logger.Warn().Err(cerr).Msg("lan agent close")
 		}
-		return errors.Annotate(err, "lan controller")
+		return fmt.Errorf("lan controller: %w", err)
 	}
 	defer func() {
 		if cerr := lanCli.Close(); cerr != nil {
@@ -247,7 +250,7 @@ func runAgent(ctx context.Context, cfg AgentConfig) error {
 	// nothing else about it.
 	upstream, err := upagent.New(cfg.upstream(), lanCli, upBusURL)
 	if err != nil {
-		return errors.Annotate(err, "upstream agent")
+		return fmt.Errorf("upstream agent: %w", err)
 	}
 
 	utils.Logger.Info().Str("action", "starting").Msg("agent")
